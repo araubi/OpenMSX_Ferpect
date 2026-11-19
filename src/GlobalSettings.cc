@@ -23,6 +23,10 @@ GlobalSettings::GlobalSettings(GlobalCommandController& commandController_)
 		"invalid_ppi_mode_callback",
 		"Tcl proc called when the MSX program has set an invalid PPI mode",
 		"default_invalid_ppi_mode_callback")
+	, tooFastOpllAccessSetting(commandController,
+		"too_fast_opll_access_callback",
+		"Tcl proc called when the MSX program writes to the YM2413 (OPLL) "
+		"faster than the chip allows", {})
 	, resampleSetting(commandController, "resampler", "Resample algorithm",
 		ResampledSoundDevice::ResampleType::HQ,
 		EnumSetting<ResampledSoundDevice::ResampleType>::Map{

@@ -54,6 +54,30 @@ Real (older) MSX machines can get damaged by this.} warning
 interp alias {} default_invalid_psg_directions_callback {} psgdirectioncallback
 
 
+# Callback on writing to the YM2413 (OPLL, MSX-MUSIC) faster than the chip
+# allows. Not enabled by default.
+set_help_text toofastopllaccesscallback \
+{This is an example of a too_fast_opll_access callback function. To use it
+execute
+    set too_fast_opll_access_callback toofastopllaccesscallback
+After changing that setting this proc will be called whenever the MSX program
+writes to the YM2413 sooner than 12 cycles (of the 3.58MHz chip clock) after an
+address write or 84 cycles after a data write. On a real machine (e.g. a turboR
+in R800 mode) such writes can get lost. This example proc prints the port, the
+device name and the program counter on stderr (like the vdpcmdinprogress
+example). Feel free to write your own proc, e.g. one that enters 'debug break'.
+
+ @param port 0 if this (too fast) write was to the address port, 1 if it was
+             to the data port.
+ @param name The name of the sound device.
+}
+
+proc toofastopllaccesscallback {port name} {
+	puts stderr [format "Too fast write to the %s port of %s, PC = 0x%04X" [expr {$port ? "data" : "address"}] $name [reg PC]]
+}
+#set too_fast_opll_access_callback toofastopllaccesscallback
+
+
 # Callback on setting an invalid PPI mode.
 set ppi_mode_warning_printed false
 proc ppimodecallback {} {

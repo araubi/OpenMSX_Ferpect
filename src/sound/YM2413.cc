@@ -6,6 +6,7 @@
 #include "YM2413OriginalNukeYKT.hh"
 
 #include "DeviceConfig.hh"
+#include "GlobalSettings.hh"
 #include "MSXException.hh"
 #include "serialize.hh"
 
@@ -80,6 +81,7 @@ static constexpr static_string_view typeDescription(YM2413::Type type)
 YM2413::YM2413(const std::string& name_, const DeviceConfig& config, Type type)
 	: ResampledSoundDevice(config.getMotherBoard(), name_, typeDescription(type), 9 + 5, INPUT_RATE, false)
 	, core(createCore(config, type))
+	, tooFastCallback(config.getGlobalSettings().getTooFastOpllAccessSetting())
 	, debuggable(config.getMotherBoard(), getName(), typeDescription(type))
 {
 	registerSound(config);
@@ -98,6 +100,18 @@ void YM2413::reset(EmuTime time)
 
 void YM2413::writePort(bool port, uint8_t value, EmuTime time)
 {
+	// The YM2413 application manual asks for a wait of 12 cycles (of its
+	// 3.58MHz clock) after an address write and of 84 cycles after a data
+	// write. Grauw measured on a turboR that the 12 cycles are exact, and
+	// that too-fast data writes corrupt the previous data write (it gets
+	// noticeable at about 75 cycles). See issue #935. This only informs
+	// the user; whether such a write gets lost depends on the core (the
+	// NukeYKT core emulates it).
+	if (time < nextAllowedWrite) [[unlikely]] {
+		tooFastCallback.execute(port ? 1 : 0, getName());
+	}
+	nextAllowedWrite = time + EmuDuration::hz(YM2413Core::CLOCK_FREQ) * (port ? 84 : 12);
+
 	updateStream(time);
 
 	auto [integral, fractional] = getEmuClock().getTicksTillAsIntFloat(time);

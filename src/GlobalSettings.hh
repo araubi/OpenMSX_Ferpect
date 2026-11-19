@@ -46,6 +46,9 @@ public:
 	[[nodiscard]] StringSetting& getInvalidPpiModeSetting() {
 		return invalidPpiModeSetting;
 	}
+	[[nodiscard]] StringSetting& getTooFastOpllAccessSetting() {
+		return tooFastOpllAccessSetting;
+	}
 	[[nodiscard]] EnumSetting<ResampledSoundDevice::ResampleType>& getResampleSetting() {
 		return resampleSetting;
 	}
@@ -69,6 +72,7 @@ private:
 	StringSetting  umrCallBackSetting;
 	StringSetting  invalidPsgDirectionsSetting;
 	StringSetting  invalidPpiModeSetting;
+	StringSetting  tooFastOpllAccessSetting;
 	EnumSetting<ResampledSoundDevice::ResampleType> resampleSetting;
 	SpeedManager speedManager;
 	ThrottleManager throttleManager;

@@ -5,6 +5,7 @@
 
 #include "EmuTime.hh"
 #include "SimpleDebuggable.hh"
+#include "TclCallback.hh"
 
 #include <cstdint>
 #include <memory>
@@ -44,6 +45,11 @@ private:
 
 private:
 	const std::unique_ptr<YM2413Core> core;
+
+	// Detection of too fast writes (only to inform the user, the
+	// effect of such writes is up to the core).
+	TclCallback tooFastCallback;
+	EmuTime nextAllowedWrite = EmuTime::zero();
 
 	struct Debuggable final : SimpleDebuggable {
 		Debuggable(MSXMotherBoard& motherBoard, const std::string& name,
