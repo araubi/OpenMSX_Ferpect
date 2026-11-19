@@ -1,0 +1,623 @@
+#include "VisibleSurface.hh"
+
+#include "Display.hh"
+#include "GlobalSettings.hh"
+#include "GLContext.hh"
+#include "GLSnow.hh"
+#include "GLUtil.hh"
+#include "OffScreenSurface.hh"
+#include "PixelOperations.hh"
+#include "RenderSettings.hh"
+#include "SDLProperties.hh"
+#include "VideoSystem.hh"
+
+#include "BooleanSetting.hh"
+#include "CliComm.hh"
+#include "Event.hh"
+#include "EventDistributor.hh"
+#include "FileContext.hh"
+#include "FloatSetting.hh"
+#include "Icon.hh"
+#include "ImGuiLayer.hh"
+#include "InitException.hh"
+#include "InputEventGenerator.hh"
+#include "MemBuffer.hh"
+#include "OSDGUILayer.hh"
+#include "PNG.hh"
+#include "Timer.hh"
+
+#include "narrow.hh"
+#include "outer.hh"
+#include "small_buffer.hh"
+
+#include "build-info.hh"
+
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_sdl3.h>
+
+#include <algorithm>
+#include <bit>
+#include <cassert>
+#include <memory>
+#include <ranges>
+
+namespace openmsx {
+
+// A buffer swap normally takes at most a few tens of milliseconds, and less
+// than 200 ms under a heavy CPU and I/O load, while a blocked swap of a hidden
+// window takes about a second. So a buffer swap of more than this (in
+// microseconds) means that vsync blocks it (see vSyncSuspended).
+static constexpr uint64_t SLOW_SWAP_TIME = 500'000;
+// The number of consecutive slow buffer swaps that suspend vsync. While
+// probing, a single slow swap is enough.
+static constexpr int SLOW_SWAPS_TO_SUSPEND = 2;
+// The number of consecutive fast buffer swaps after which probing ends: the
+// window is visible again.
+static constexpr int FAST_SWAPS_TO_RESUME = 10;
+
+VisibleSurface::VisibleSurface(
+		Display& display_,
+		RTScheduler& rtScheduler_,
+		EventDistributor& eventDistributor_,
+		InputEventGenerator& inputEventGenerator_,
+		CliComm& cliComm_,
+		VideoSystem& videoSystem_,
+		BooleanSetting& pauseSetting_)
+	: RTSchedulable(rtScheduler_)
+	, display(display_)
+	, eventDistributor(eventDistributor_)
+	, inputEventGenerator(inputEventGenerator_)
+	, cliComm(cliComm_)
+	, videoSystem(videoSystem_)
+	, pauseSetting(pauseSetting_)
+{
+	auto& renderSettings = display.getRenderSettings();
+
+	updateCursor();
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+#if OPENGL_VERSION == OPENGL_ES_2_0
+	#define VERSION_STRING "openGL ES 2.0"
+	const char* glsl_version = "#version 100";
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#elif OPENGL_VERSION == OPENGL_2_1
+	#define VERSION_STRING "openGL 2.1"
+	const char* glsl_version = "#version 120";
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif OPENGL_VERSION == OPENGL_3_3
+	#define VERSION_STRING "openGL 3.3"
+	const char* glsl_version = "#version 150";
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+#endif
+
+	SDL_WindowFlags flags = SDL_WINDOW_OPENGL;
+	//flags |= SDL_RESIZABLE;
+	auto size = display.getWindowSize();
+	createSurface(size, flags);
+	WindowEvent::setMainWindowId(SDL_GetWindowID(window.get()));
+
+	glContext = SDL_GL_CreateContext(window.get());
+	if (!glContext) {
+		throw InitException(
+			"Failed to create " VERSION_STRING " context: ", SDL_GetError());
+	}
+
+	// Setup ImGui Platform/Renderer backends
+	ImGui_ImplSDL3_InitForOpenGL(window.get(), glContext);
+	ImGui_ImplOpenGL3_Init(glsl_version);
+
+	// From the glew documentation:
+	//   GLEW obtains information on the supported extensions from the
+	//   graphics driver. Experimental or pre-release drivers, however,
+	//   might not report every available extension through the standard
+	//   mechanism, in which case GLEW will report it unsupported. To
+	//   circumvent this situation, the glewExperimental global switch can
+	//   be turned on by setting it to GL_TRUE before calling glewInit(),
+	//   which ensures that all extensions with valid entry points will be
+	//   exposed.
+	// The 'glewinfo' utility also sets this flag before reporting results,
+	// so I believe it would cause less confusion to do the same here.
+	glewExperimental = GL_TRUE;
+
+	// Initialise GLEW library.
+	// GLEW fails to initialise on Wayland because it has no GLX, since the
+	// one provided by the distros was built to use GLX instead of EGL. We
+	// ignore the GLEW_ERROR_NO_GLX_DISPLAY error with this temporary fix
+	// until it is fixed by GLEW upstream and released by major distros.
+	// See https://github.com/nigels-com/glew/issues/172
+	if (GLenum glew_error = glewInit();
+	    glew_error != GLEW_OK && glew_error != GLEW_ERROR_NO_GLX_DISPLAY) {
+		throw InitException(
+			"Failed to init GLEW: ",
+			std::bit_cast<const char*>(glewGetErrorString(glew_error)));
+	}
+	if (!GLEW_VERSION_2_1) {
+		throw InitException(
+			"Need at least OpenGL version " VERSION_STRING);
+	}
+	gl::context.emplace();
+
+	bool fullScreen = renderSettings.getFullScreen();
+	setViewPort(size, fullScreen); // set initial values
+
+	renderSettings.getVSyncSetting().attach(vSyncObserver);
+	// set initial value
+	vSyncObserver.update(renderSettings.getVSyncSetting());
+
+#if OPENGL_VERSION == OPENGL_3_3
+	// We don't (yet/anymore) use VAO, but apparently it's required in openGL 3.3.
+	// Luckily this workaround is sufficient: create one global VAO and then don't care anymore.
+	GLuint vao;
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+#endif
+	inputEventGenerator.initializeGrab();
+
+	// Keep last: if the ctor throws, ~VisibleSurface won't run to detach.
+	inputEventGenerator.getGrabInput().attach(*this);
+	renderSettings.getPointerHideDelaySetting().attach(*this);
+	renderSettings.getFullScreenSetting().attach(*this);
+	pauseSetting.attach(*this);
+
+	for (auto type : {EventType::MOUSE_MOTION,
+	                  EventType::MOUSE_BUTTON_DOWN,
+	                  EventType::MOUSE_BUTTON_UP,
+	                  EventType::IMGUI_ACTIVE,
+	                  EventType::WINDOW}) {
+		eventDistributor.registerEventListener(type, *this);
+	}
+}
+
+VisibleSurface::~VisibleSurface()
+{
+	auto& renderSettings = display.getRenderSettings();
+	renderSettings.getVSyncSetting().detach(vSyncObserver);
+
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplSDL3_Shutdown();
+
+	gl::context.reset();
+	SDL_GL_DestroyContext(glContext);
+
+	// store last known position for when we recreate it
+	// the window gets recreated when changing renderers, for instance.
+	// Do not store if we're full screen, the location is the top-left
+	if (auto pos = getWindowPosition()) {
+		display.storeWindowPosition(*pos);
+	}
+
+	for (auto type : {EventType::WINDOW,
+	                  EventType::IMGUI_ACTIVE,
+	                  EventType::MOUSE_BUTTON_UP,
+	                  EventType::MOUSE_BUTTON_DOWN,
+	                  EventType::MOUSE_MOTION}) {
+		eventDistributor.unregisterEventListener(type, *this);
+	}
+
+	inputEventGenerator.getGrabInput().detach(*this);
+	renderSettings.getPointerHideDelaySetting().detach(*this);
+	renderSettings.getFullScreenSetting().detach(*this);
+	pauseSetting.detach(*this);
+}
+
+std::optional<gl::ivec2> VisibleSurface::getWindowPosition() const
+{
+	if (SDL_GetWindowFlags(window.get()) & SDL_WINDOW_FULLSCREEN) return {};
+	int x, y;
+	SDL_GetWindowPosition(window.get(), &x, &y);
+	return gl::ivec2{x, y};
+}
+
+void VisibleSurface::setWindowPosition(gl::ivec2 pos)
+{
+	if (SDL_GetWindowFlags(window.get()) & SDL_WINDOW_FULLSCREEN) return;
+	SDL_SetWindowPosition(window.get(), pos.x, pos.y);
+}
+
+// TODO: The video subsystem is not de-initialized on errors.
+//       While it would be consistent to do so, doing it in this class is
+//       not ideal since the init doesn't happen here.
+void VisibleSurface::createSurface(gl::ivec2 size, SDL_WindowFlags flags)
+{
+	if (getDisplay().getRenderSettings().getFullScreen()) {
+		flags |= SDL_WINDOW_FULLSCREEN;
+	}
+#ifdef __APPLE__
+	// See VisibleSurface::setViewPort() for why only macos (for now).
+	flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
+
+	assert(!window);
+	auto pos = display.retrieveWindowPosition();
+	SDLProperties props;
+	SDL_SetStringProperty(props.get(), SDL_PROP_WINDOW_CREATE_TITLE_STRING, getDisplay().getWindowTitle().c_str());
+	SDL_SetNumberProperty(props.get(), SDL_PROP_WINDOW_CREATE_X_NUMBER, pos.x);
+	SDL_SetNumberProperty(props.get(), SDL_PROP_WINDOW_CREATE_Y_NUMBER, pos.y);
+	SDL_SetNumberProperty(props.get(), SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, size.x);
+	SDL_SetNumberProperty(props.get(), SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, size.y);
+	SDL_SetNumberProperty(props.get(), SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, flags);
+	window.reset(SDL_CreateWindowWithProperties(props.get()));
+	if (!window) {
+		std::string err = SDL_GetError();
+		throw InitException("Could not create window: ", err);
+	}
+	// SDL3 may apply the window state (e.g. fullscreen) asynchronously,
+	// but we need the final size right away (see setViewPort()).
+	SDL_SyncWindow(window.get());
+
+	updateWindowTitle();
+
+	// set icon
+	if constexpr (OPENMSX_SET_WINDOW_ICON) {
+		SDLSurfacePtr iconSurf;
+		// always use 32x32 icon on Windows, for some reason you get badly scaled icons there
+#ifndef _WIN32
+		try {
+			iconSurf = PNG::load(preferSystemFileContext().resolve("icons/openMSX-logo-256.png"), true);
+		} catch (MSXException& e) {
+			getCliComm().printWarning(
+				"Falling back to built in 32x32 icon, because failed to load icon: ",
+				e.getMessage());
+#endif
+			PixelOperations pixelOps;
+			iconSurf.reset(SDL_CreateSurfaceFrom(
+				narrow<int>(openMSX_icon.width),
+				narrow<int>(openMSX_icon.height),
+				SDL_GetPixelFormatForMasks(
+					narrow<int>(openMSX_icon.bytes_per_pixel * 8),
+					pixelOps.getRmask(),
+					pixelOps.getGmask(),
+					pixelOps.getBmask(),
+					pixelOps.getAmask()),
+				const_cast<char*>(openMSX_icon.pixel_data),
+				narrow<int>(openMSX_icon.bytes_per_pixel * openMSX_icon.width)));
+#ifndef _WIN32
+		}
+#endif
+		SDL_SetSurfaceColorKey(iconSurf.get(), true, 0);
+		SDL_SetWindowIcon(window.get(), iconSurf.get());
+	}
+}
+
+void VisibleSurface::update(const Setting& /*setting*/) noexcept
+{
+	updateCursor();
+}
+
+void VisibleSurface::executeRT()
+{
+	// timer expired, hide cursor
+	videoSystem.showCursor(VideoSystem::Cursor::HIDDEN);
+	inputEventGenerator.updateGrab(grab);
+}
+
+bool VisibleSurface::signalEvent(const Event& event)
+{
+	if (getType(event) == EventType::WINDOW) {
+		const auto& e = get_event<WindowEvent>(event);
+		if (e.isMainWindow()) {
+			switch (e.getSdlWindowEvent().type) {
+			case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+				// SDL3 may report the final size of the window only
+				// later, even after SDL_SyncWindow() (e.g. when
+				// switching to fullscreen on GNOME it first reports
+				// the size without the top bar), so update the
+				// viewport when it changes.
+				fullScreenUpdated((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_FULLSCREEN) != 0);
+				break;
+			case SDL_EVENT_WINDOW_MINIMIZED:
+			case SDL_EVENT_WINDOW_OCCLUDED:
+				suspendVSyncForEvent();
+				break;
+			case SDL_EVENT_WINDOW_RESTORED:
+			case SDL_EVENT_WINDOW_EXPOSED:
+			case SDL_EVENT_WINDOW_FOCUS_GAINED:
+			case SDL_EVENT_WINDOW_MOUSE_ENTER:
+				// (when the window isn't visible after all, slow
+				// buffer swaps suspend vsync again)
+				resumeVSyncForEvent();
+				break;
+			default:
+				break;
+			}
+		}
+		return false;
+	}
+	if (getType(event) == EventType::IMGUI_ACTIVE) {
+		guiActive = get_event<ImGuiActiveEvent>(event).getActive();
+	}
+	updateCursor();
+	return false;
+}
+
+void VisibleSurface::updateCursor()
+{
+	cancelRT();
+	const auto& renderSettings = display.getRenderSettings();
+	grab = !guiActive && !pauseSetting.getBoolean() &&
+	       (renderSettings.getFullScreen() ||
+	        inputEventGenerator.getGrabInput().getBoolean());
+	if (display.isCrosshairCursorRequested() && !guiActive && window) {
+		// The host cursor is the aim point (e.g. of a light gun), so
+		// keep it visible, also in fullscreen and grab-input mode. (No
+		// crosshair before the window exists: its size depends on it.)
+		inputEventGenerator.updateGrab(grab);
+		videoSystem.showCursor(VideoSystem::Cursor::CROSSHAIR);
+		return;
+	}
+	if (grab) {
+		// always hide cursor in fullscreen or grab-input mode, but do it
+		// after the derived class is constructed to avoid an SDL bug.
+		scheduleRT(0);
+		return;
+	}
+	inputEventGenerator.updateGrab(grab);
+	float delay = renderSettings.getPointerHideDelay();
+	if (delay == 0.0f) {
+		videoSystem.showCursor(VideoSystem::Cursor::HIDDEN);
+	} else {
+		videoSystem.showCursor(VideoSystem::Cursor::NORMAL);
+		if (delay > 0.0f) {
+			scheduleRT(int(delay * 1e6f)); // delay in s, schedule in us
+		}
+	}
+}
+
+bool VisibleSurface::setFullScreen(bool fullscreen)
+{
+	auto flags = SDL_GetWindowFlags(window.get());
+	if (bool currentState = (flags & SDL_WINDOW_FULLSCREEN) != 0;
+	    currentState == fullscreen) {
+		// already wanted stated
+		return true;
+	}
+
+	// Note: without a fullscreen display mode (SDL_SetWindowFullscreenMode())
+	//       this is a borderless window covering the desktop, like SDL2's
+	//       SDL_WINDOW_FULLSCREEN_DESKTOP.
+	if (!SDL_SetWindowFullscreen(window.get(), fullscreen)) {
+		return false; // error, try re-creating the window
+	}
+	// SDL3 may apply this asynchronously, wait for it (see setViewPort()).
+	SDL_SyncWindow(window.get());
+	if (!fullscreen) {
+		// While fullscreen, SDL3 ignores size changes (e.g. from
+		// resize()). SDL2 applied them when leaving fullscreen, so set
+		// the size again.
+		auto size = display.getWindowSize();
+		SDL_SetWindowSize(window.get(), size.x, size.y);
+		SDL_SyncWindow(window.get());
+	}
+	fullScreenUpdated(fullscreen);
+	return true; // success
+}
+
+void VisibleSurface::resize()
+{
+	auto size = display.getWindowSize();
+	SDL_SetWindowSize(window.get(), size.x, size.y);
+	SDL_SyncWindow(window.get()); // see setFullScreen()
+
+	bool fullScreen = display.getRenderSettings().getFullScreen();
+	setViewPort(size, fullScreen);
+}
+
+void VisibleSurface::updateWindowTitle()
+{
+	assert(window);
+	SDL_SetWindowTitle(window.get(), getDisplay().getWindowTitle().c_str());
+}
+
+std::optional<gl::ivec2> VisibleSurface::getMouseCoord() const
+{
+	if (SDL_GetMouseFocus() != window.get()) return {};
+
+	float mouseX, mouseY;
+	SDL_GetMouseState(&mouseX, &mouseY);
+	// KEEP-SDL2: SDL3 uses float coordinates, SDL2 used whole window
+	// coordinates
+	return gl::ivec2{int(mouseX), int(mouseY)};
+}
+
+gl::vec2 VisibleSurface::getMsxPixelSize() const
+{
+	// SDL reports mouse coordinates in window coordinates ('points').
+	int windowW, windowH;
+	SDL_GetWindowSize(window.get(), &windowW, &windowH);
+	auto windowSize = gl::vec2(narrow<float>(windowW), narrow<float>(windowH));
+
+	// The image shows 'horizontal_stretch' of the 320 MSX pixels per line,
+	// and always all 240 lines.
+	const auto& renderSettings = display.getRenderSettings();
+	auto msxSize = gl::vec2(renderSettings.getHorizontalStretch(), 240.0f);
+
+	if (renderSettings.getFullStretch()) {
+		return windowSize / msxSize; // image covers the whole window
+	}
+	// The viewport is expressed in physical pixels, which on high-DPI
+	// displays are not the same as points, so convert via the window size.
+	return (gl::vec2(getViewSize()) * windowSize) /
+	       (gl::vec2(getPhysicalSize()) * msxSize);
+}
+
+
+void VisibleSurface::saveScreenshot(const std::string& filename)
+{
+	saveScreenshotGL(*this, filename);
+}
+
+void VisibleSurface::saveScreenshotGL(
+	const OutputSurface& output, const std::string& filename)
+{
+	auto [x, y] = output.getViewOffset();
+	auto [w, h] = output.getViewSize();
+
+	// OpenGL ES only supports reading RGBA (not RGB)
+	MemBuffer<uint32_t> buffer(size_t(w) * size_t(h));
+	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buffer.data());
+
+	small_buffer<const uint32_t*, 1080> rowPointers(std::views::transform(xrange(size_t(h)),
+		[&](auto i) { return &buffer[size_t(w) * (h - 1 - i)]; }));
+
+	PNG::saveRGBA(w, rowPointers, filename);
+}
+
+void VisibleSurface::finish()
+{
+	auto start = Timer::getTime();
+	SDL_GL_SwapWindow(window.get());
+	checkSwapTime(start);
+}
+
+void VisibleSurface::checkSwapTime(uint64_t start)
+{
+	auto now = Timer::getTime();
+	if (vSyncSuspended) {
+		if (vSyncRetryTime && (now >= vSyncRetryTime)) {
+			// Switch vsync on again, to see whether the window is
+			// visible again. Mesa (DRI3) waits for the pending buffer
+			// swap before it changes the swap interval, so if that
+			// takes long, the window is still hidden.
+			vSyncRetryTime = 0;
+			vSyncProbing = true;
+			slowSwaps = fastSwaps = 0;
+			setVSyncSuspended(false);
+			if ((Timer::getTime() - now) > SLOW_SWAP_TIME) {
+				suspendVSyncForSlowSwaps();
+			}
+		}
+	} else if ((now - start) > SLOW_SWAP_TIME) {
+		fastSwaps = 0;
+		if (++slowSwaps >= (vSyncProbing ? 1 : SLOW_SWAPS_TO_SUSPEND)) {
+			suspendVSyncForSlowSwaps();
+		}
+	} else {
+		slowSwaps = 0;
+		if (vSyncProbing && (++fastSwaps >= FAST_SWAPS_TO_RESUME)) {
+			vSyncProbing = false;
+			vSyncRetryDelay = VSYNC_RETRY_DELAY_MIN;
+		}
+	}
+}
+
+void VisibleSurface::suspendVSyncForSlowSwaps()
+{
+	// (this can take as long as a slow buffer swap, see above)
+	setVSyncSuspended(true);
+	slowSwaps = 0;
+	vSyncProbing = false;
+	vSyncRetryTime = Timer::getTime() + vSyncRetryDelay;
+	vSyncRetryDelay = std::min(2 * vSyncRetryDelay, VSYNC_RETRY_DELAY_MAX);
+}
+
+void VisibleSurface::setVSyncSuspended(bool suspend)
+{
+	if (suspend == vSyncSuspended) return;
+	vSyncSuspended = suspend;
+	updateSwapInterval();
+}
+
+void VisibleSurface::suspendVSyncForEvent()
+{
+	setVSyncSuspended(true);
+	vSyncProbing = false;
+	slowSwaps = fastSwaps = 0;
+	vSyncRetryTime = 0; // an event will resume it
+}
+
+void VisibleSurface::resumeVSyncForEvent()
+{
+	setVSyncSuspended(false);
+	vSyncProbing = false;
+	slowSwaps = fastSwaps = 0;
+	vSyncRetryTime = 0;
+	vSyncRetryDelay = VSYNC_RETRY_DELAY_MIN;
+}
+
+std::unique_ptr<Layer> VisibleSurface::createSnowLayer()
+{
+	return std::make_unique<GLSnow>(getDisplay());
+}
+
+std::unique_ptr<Layer> VisibleSurface::createOSDGUILayer(OSDGUI& gui)
+{
+	return std::make_unique<OSDGUILayer>(gui);
+}
+
+std::unique_ptr<Layer> VisibleSurface::createImGUILayer(ImGuiManager& manager)
+{
+	return std::make_unique<ImGuiLayer>(manager);
+}
+
+std::unique_ptr<OutputSurface> VisibleSurface::createOffScreenSurface()
+{
+	return std::make_unique<OffScreenSurface>(*this);
+}
+
+void VisibleSurface::VSyncObserver::update(const Setting& setting) noexcept
+{
+	auto& visSurface = OUTER(VisibleSurface, vSyncObserver);
+	assert(&setting == &visSurface.getDisplay().getRenderSettings().getVSyncSetting()); (void)setting;
+	visSurface.updateSwapInterval();
+}
+
+void VisibleSurface::updateSwapInterval()
+{
+	// for now, we assume that adaptive vsync is the best kind of vsync, so when
+	// vsync is enabled, we attempt adaptive vsync.
+	int interval = (!vSyncSuspended &&
+	                getDisplay().getRenderSettings().getVSyncSetting().getBoolean())
+	             ? -1 : 0;
+
+	if (!SDL_GL_SetSwapInterval(interval) && (interval == -1)) {
+		// "Adaptive vsync" is not supported by all drivers. SDL
+		// documentation suggests to fallback to "regular vsync" in
+		// that case.
+		SDL_GL_SetSwapInterval(1);
+	}
+}
+
+void VisibleSurface::setViewPort(gl::ivec2 logicalSize, bool fullScreen)
+{
+	gl::ivec2 physicalSize = [&] {
+#ifndef __APPLE__
+		// On macos we set 'SDL_WINDOW_HIGH_PIXEL_DENSITY', and in that case
+		// it's required to use SDL_GetWindowSizeInPixels(), but then this
+		// 'full screen'-workaround/hack is counter-productive.
+		if (!fullScreen) {
+			// ??? When switching  back from full screen to windowed mode,
+			// SDL_GetWindowSizeInPixels() still returns the dimensions of the
+			// full screen window ??? Is this a bug ???
+			// But we know that in windowed mode, physical and logical size
+			// must be the same, so enforce that.
+			return logicalSize;
+		}
+#endif
+		(void)fullScreen;
+		int w, h;
+		SDL_GetWindowSizeInPixels(window.get(), &w, &h);
+		return gl::ivec2(w, h);
+	}();
+
+	// The created surface may be larger than requested.
+	// If that happens, center the area that we actually use.
+	calculateViewPort(logicalSize, physicalSize);
+	// actually setting the viewport is done in PostProcessor::paint()
+
+	gl::context->setupMvpMatrix(gl::vec2(logicalSize));
+}
+
+void VisibleSurface::fullScreenUpdated(bool fullScreen)
+{
+	setViewPort(getLogicalSize(), fullScreen);
+}
+
+} // namespace openmsx

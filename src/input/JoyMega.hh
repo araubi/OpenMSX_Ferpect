@@ -1,0 +1,95 @@
+#ifndef JOYMEGA_HH
+#define JOYMEGA_HH
+
+#include "JoystickDevice.hh"
+
+#include "BooleanInput.hh"
+#include "MSXEventListener.hh"
+#include "Observer.hh"
+#include "StateChangeListener.hh"
+#include "StringSetting.hh"
+
+#include <array>
+#include <string_view>
+#include <vector>
+
+namespace openmsx {
+
+class CommandController;
+class JoystickManager;
+class MSXEventDistributor;
+class StateChangeDistributor;
+
+class JoyMega final : public JoystickDevice, private MSXEventListener
+                    , private StateChangeListener
+                    , private Observer<JoystickManager>
+{
+public:
+	JoyMega(CommandController& commandController,
+	        MSXEventDistributor& eventDistributor,
+	        StateChangeDistributor& stateChangeDistributor,
+	        JoystickManager& joystickManager,
+	        uint8_t id);
+	~JoyMega() override ;
+
+	[[nodiscard]] static TclObject getDefaultConfig(JoystickId joyId, const JoystickManager& joystickManager);
+
+	// keys in the Tcl config dict, in the order of the 'status' bits
+	static constexpr std::array<std::string_view, 12> keyNames = {
+		"UP", "DOWN", "LEFT", "RIGHT",
+		"A", "B", "C", "START",
+		"X", "Y", "Z", "SELECT",
+	};
+
+	template<typename Archive>
+	void serialize(Archive& ar, unsigned version);
+
+private:
+	void checkJoystickConfig(const TclObject& newValue);
+
+	// Pluggable
+	[[nodiscard]] zstring_view getName() const override;
+	[[nodiscard]] zstring_view getDescription() const override;
+	void plugHelper(Connector& connector, EmuTime time) override;
+	void unplugHelper(EmuTime time) override;
+
+	// JoystickDevice
+	[[nodiscard]] uint8_t peek(EmuTime time) const override;
+	void write(uint8_t value, EmuTime time) override;
+
+	// MSXEventListener
+	void signalMSXEvent(const Event& event,
+	                    EmuTime time) noexcept override;
+	// StateChangeListener
+	void signalStateChange(const StateChange& event) override;
+	void stopReplay(EmuTime time) noexcept override;
+	// Observer<JoystickManager>
+	void update(const JoystickManager& manager) noexcept override;
+
+	void plugHelper2();
+	void checkTime(EmuTime time);
+	[[nodiscard]] uint8_t getCycle(EmuTime time) const;
+
+private:
+	CommandController& commandController;
+	MSXEventDistributor& eventDistributor;
+	StateChangeDistributor& stateChangeDistributor;
+	JoystickManager& joystickManager;
+	StringSetting configSetting;
+
+	// 0...3 :  up, down, left, right
+	// 4...7 :  a, b, c, start
+	// 8..11 :  x, y, z, select
+	std::array<std::vector<BooleanInput>, 12> bindings; // calculated from 'configSetting'
+
+	const std::string description;
+	EmuTime lastTime = EmuTime::zero();
+	unsigned status = 0xfff;
+	uint8_t cycle; // 0-7
+	uint8_t cycleMask; // 1 or 7
+	const uint8_t id;
+};
+
+} // namespace openmsx
+
+#endif

@@ -1,0 +1,241 @@
+#include "JoyMega.hh"
+
+#include "CommandController.hh"
+#include "Event.hh"
+#include "IntegerSetting.hh"
+#include "JoystickManager.hh"
+#include "MSXEventDistributor.hh"
+#include "StateChange.hh"
+#include "StateChangeDistributor.hh"
+#include "serialize.hh"
+#include "serialize_meta.hh"
+
+#include "ranges.hh"
+#include "unreachable.hh"
+#include "xrange.hh"
+
+namespace openmsx {
+
+TclObject JoyMega::getDefaultConfig(JoystickId joyId, const JoystickManager& joystickManager)
+{
+	auto buttons = joystickManager.getNumButtons(joyId);
+	if (!buttons) return {};
+
+	std::array<TclObject, 8> lists;
+	auto joy = joyId.str();
+	for (auto b : xrange(*buttons)) {
+		lists[b % 8].addListElement(tmpStrCat(joy, " button", b));
+	}
+	return TclObject(TclObject::MakeDictTag{},
+		"UP",    makeTclList(tmpStrCat(joy, " -axis1"), tmpStrCat(joy, " hat0 up")),
+		"DOWN",  makeTclList(tmpStrCat(joy, " +axis1"), tmpStrCat(joy, " hat0 down")),
+		"LEFT",  makeTclList(tmpStrCat(joy, " -axis0"), tmpStrCat(joy, " hat0 left")),
+		"RIGHT", makeTclList(tmpStrCat(joy, " +axis0"), tmpStrCat(joy, " hat0 right")),
+		"A",     lists[0],
+		"B",     lists[1],
+		"C",     lists[2],
+		"X",     lists[3],
+		"Y",     lists[4],
+		"Z",     lists[5],
+		"SELECT",lists[6],
+		"START", lists[7]);
+}
+
+JoyMega::JoyMega(CommandController& commandController_,
+                 MSXEventDistributor& eventDistributor_,
+                 StateChangeDistributor& stateChangeDistributor_,
+                 JoystickManager& joystickManager_,
+                 uint8_t id_)
+	: commandController(commandController_)
+	, eventDistributor(eventDistributor_)
+	, stateChangeDistributor(stateChangeDistributor_)
+	, joystickManager(joystickManager_)
+	, configSetting(commandController, tmpStrCat("joymega", id_, "_config"),
+		"joymega mapping configuration", getDefaultConfig(JoystickId(id_ - 1), joystickManager).getString())
+	, description(strCat("JoyMega based Mega Drive controller ", id_, ". Mapping is fully configurable."))
+	, id(id_)
+{
+	configSetting.setChecker([this](const TclObject& newValue) {
+		this->checkJoystickConfig(newValue); });
+	try {
+		// fill in 'bindings'
+		checkJoystickConfig(configSetting.getValue());
+	} catch (MSXException& /*e*/) {
+		configSetting.setValue(getDefaultConfig(JoystickId(id - 1), joystickManager));
+	}
+	joystickManager.attach(*this);
+}
+
+JoyMega::~JoyMega()
+{
+	joystickManager.detach(*this);
+	if (isPluggedIn()) {
+		JoyMega::unplugHelper(EmuTime::dummy());
+	}
+}
+
+void JoyMega::checkJoystickConfig(const TclObject& newValue)
+{
+	auto newBindings = parseBooleanInputBindings(
+		commandController.getInterpreter(), newValue, keyNames);
+
+	// only change current bindings when parsing was fully successful
+	copy_to_range(newBindings, bindings);
+}
+
+// Pluggable
+zstring_view JoyMega::getName() const
+{
+	switch (id) {
+		case 1: return "joymega1";
+		case 2: return "joymega2";
+		default: UNREACHABLE;
+	}
+}
+
+zstring_view JoyMega::getDescription() const
+{
+	return description;
+}
+
+void JoyMega::plugHelper(Connector& /*connector*/, EmuTime /*time*/)
+{
+	plugHelper2();
+	status = 0xfff;
+	cycle = 0;
+	// when mode button is pressed when joystick is plugged in, then
+	// act as a 3-button joypad (otherwise 6-button)
+	cycleMask = (status & 0x800) ? 7 : 1;
+}
+
+void JoyMega::plugHelper2()
+{
+	eventDistributor.registerEventListener(*this);
+	stateChangeDistributor.registerListener(*this);
+}
+
+void JoyMega::unplugHelper(EmuTime /*time*/)
+{
+	stateChangeDistributor.unregisterListener(*this);
+	eventDistributor.unregisterEventListener(*this);
+}
+
+
+// JoystickDevice
+uint8_t JoyMega::peek(EmuTime time) const
+{
+	// See http://segaretro.org/Control_Pad_(Mega_Drive)
+	// and http://frs.badcoffee.info/hardware/joymega-en.html
+	// for a detailed description of the MegaDrive joystick.
+	switch (getCycle(time)) {
+	case 0: case 2: case 4:
+		// up/down/left/right/b/c
+		return (status & 0x00f) | ((status & 0x060) >> 1);
+	case 1: case 3:
+		// up/down/0/0/a/start
+		return (status & 0x013) | ((status & 0x080) >> 2);
+	case 5:
+		// 0/0/0/0/a/start
+		return (status & 0x010) | ((status & 0x080) >> 2);
+	case 6:
+		// z/y/x/mode/b/c
+		return ((status & 0x400) >> 10) | // z
+		       ((status & 0xA00) >>  8) | // start+y
+		       ((status & 0x100) >>  6) | // x
+		       ((status & 0x060) >>  1);  // c+b
+	case 7:
+		// 1/1/1/1/a/start
+		return (status & 0x010) | ((status & 0x080) >> 2) | 0x0f;
+	default:
+		UNREACHABLE;
+	}
+}
+
+void JoyMega::write(uint8_t value, EmuTime time)
+{
+	checkTime(time);
+	lastTime = time;
+	if (((value >> 2) & 1) != (cycle & 1)) {
+		cycle = (cycle + 1) & cycleMask;
+	}
+	assert(((value >> 2) & 1) == (cycle & 1));
+}
+
+void JoyMega::checkTime(EmuTime time)
+{
+	cycle = getCycle(time);
+}
+
+uint8_t JoyMega::getCycle(EmuTime time) const
+{
+	// longer than 1.5ms since last write -> reset cycle
+	return ((time - lastTime) > EmuDuration::usec(1500)) ? 0 : cycle;
+}
+
+// MSXEventListener
+void JoyMega::signalMSXEvent(const Event& event, EmuTime time) noexcept
+{
+	unsigned press = 0;
+	unsigned release = 0;
+
+	auto getJoyDeadThreshold = [&](JoystickId joyId) {
+		return joystickManager.getJoyDeadThreshold(joyId);
+	};
+	for (int i : xrange(12)) {
+		for (const auto& binding : bindings[i]) {
+			if (auto onOff = match(binding, event, getJoyDeadThreshold)) {
+				(*onOff ? press : release) |= 1 << i;
+			}
+		}
+	}
+
+	if (((status & ~press) | release) != status) {
+		stateChangeDistributor.distributeNew<JoyMegaState>(
+			time, id, press, release);
+	}
+}
+
+// StateChangeListener
+void JoyMega::signalStateChange(const StateChange& event)
+{
+	const auto* js = std::get_if<JoyMegaState>(&event);
+	if (!js) return;
+	if (js->getId() != id) return;
+
+	status = (status & ~js->getPress()) | js->getRelease();
+}
+
+void JoyMega::stopReplay(EmuTime time) noexcept
+{
+	unsigned newStatus = 0xfff;
+	if (newStatus != status) {
+		auto release = newStatus & ~status;
+		stateChangeDistributor.distributeNew<JoyMegaState>(
+			time, id, 0, release);
+	}
+}
+
+// Observer<JoystickManager>
+void JoyMega::update(const JoystickManager& /*manager*/) noexcept
+{
+	// A host joystick was added or removed: the default mapping may change.
+	configSetting.setDefaultValue(getDefaultConfig(JoystickId(id - 1), joystickManager));
+}
+
+template<typename Archive>
+void JoyMega::serialize(Archive& ar, unsigned /*version*/)
+{
+	ar.serialize("lastTime",  lastTime,
+	             "status",    status,
+	             "cycle",     cycle,
+	             "cycleMask", cycleMask);
+	if constexpr (Archive::IS_LOADER) {
+		if (isPluggedIn()) {
+			plugHelper2();
+		}
+	}
+}
+INSTANTIATE_SERIALIZE_METHODS(JoyMega);
+REGISTER_POLYMORPHIC_INITIALIZER(Pluggable, JoyMega, "JoyMega");
+
+} // namespace openmsx

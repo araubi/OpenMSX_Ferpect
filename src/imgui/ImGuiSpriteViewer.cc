@@ -1,0 +1,577 @@
+#include "ImGuiSpriteViewer.hh"
+
+#include "ImGuiCpp.hh"
+#include "ImGuiManager.hh"
+#include "ImGuiPalette.hh"
+#include "ImGuiUtils.hh"
+#include "ImGuiVDPUtils.hh"
+
+#include "MSXMotherBoard.hh"
+#include "SpriteChecker.hh"
+#include "SpriteConverter.hh"
+#include "VDP.hh"
+#include "VDPVRAM.hh"
+
+#include "static_vector.hh"
+#include "xrange.hh"
+
+#include <imgui.h>
+
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <ranges>
+#include <span>
+
+namespace openmsx {
+
+using namespace std::literals;
+
+ImGuiSpriteViewer::ImGuiSpriteViewer(ImGuiManager& manager_, size_t index)
+	: ImGuiPart(manager_)
+	, title(strCat("Sprite viewer", strCat_if(index, " (", index + 1, ')')))
+{
+}
+
+void ImGuiSpriteViewer::save(ImGuiTextBuffer& buf)
+{
+	savePersistent(buf, *this, persistentElements);
+}
+
+void ImGuiSpriteViewer::loadLine(std::string_view name, zstring_view value)
+{
+	loadOnePersistent(name, value, *this, persistentElements);
+}
+
+[[nodiscard]] static int getSpriteAttrAddr(int sprite, int mode)
+{
+	return (mode == 2 ? 512 : 0) + 4 * sprite;
+}
+[[nodiscard]] static int getSpriteColorAddr(int sprite, int mode)
+{
+	assert(mode == 2); (void)mode;
+	return 16 * sprite;
+}
+
+static void renderSpriteAttrib(const VramTable& att, int sprite, int mode, int size, int transparent,
+                               float zoom, std::span<uint32_t, 16> palette, ImTextureID patternTex)
+{
+	int addr = getSpriteAttrAddr(sprite, mode);
+	auto [uv1, uv2] = spritePatternUV(att[addr + 2], size);
+
+	auto getColor = [&](int color) -> gl::vec4 {
+		if (color == 0 && transparent) return {};
+		return ImGui::ColorConvertU32ToFloat4(palette[color]);
+	};
+
+	if (mode == 1) {
+		auto attrib = att[addr + 3];
+		auto color = attrib & 0x0f;
+		ImGui::ImageWithBg(patternTex, zoom * gl::vec2{float(size)}, uv1, uv2,
+		                   {}, getColor(color));
+	} else {
+		// one image line (1/64 of the image height) per sprite line
+		int colorBase = getSpriteColorAddr(sprite, mode);
+		gl::vec2 pos = ImGui::GetCursorPos();
+		float v1 = uv1.y;
+		for (auto y : xrange(size)) {
+			auto attrib = att[colorBase + y];
+			auto color = attrib & 0x0f;
+			ImGui::SetCursorPos({pos.x, pos.y + zoom * float(y)});
+			float v2 = v1 + (1.0f / 64.0f);
+			ImGui::ImageWithBg(patternTex, zoom * gl::vec2{float(size), 1.0f}, {uv1.x, v1}, {uv2.x, v2},
+			                   {}, getColor(color));
+			v1 = v2;
+		}
+	}
+}
+
+void ImGuiSpriteViewer::paint(MSXMotherBoard* motherBoard)
+{
+	if (!show || !motherBoard) return;
+
+	ImGui::SetNextWindowSize({748, 1010}, ImGuiCond_FirstUseEver);
+	im::Window(title.c_str(), &show, [&]{
+		auto* vdp = dynamic_cast<VDP*>(motherBoard->findDevice("VDP")); // TODO name based OK?
+		if (!vdp) return;
+		const auto& vram = vdp->getVRAM().getData();
+
+		auto modeToStr = [](int mode) {
+			if (mode == 0) return "no sprites";
+			if (mode == 1) return "1";
+			if (mode == 2) return "2";
+			assert(false); return "ERROR";
+		};
+		auto sizeToStr = [](int size) {
+			if (size ==  8) return "8 x 8";
+			if (size == 16) return "16 x 16";
+			assert(false); return "ERROR";
+		};
+		auto attMult = [](int mode) { return 1 << ((mode == 2) ? 10 : 7); };
+
+		bool isMSX1 = vdp->isMSX1VDP();
+		auto displayMode = vdp->getDisplayMode();
+		bool planar = displayMode.isPlanar();
+		int vdpMode = displayMode.getSpriteMode(isMSX1);
+		int vdpVerticalScroll = vdp->getVerticalScroll();
+		int vdpLines = vdp->getNumberOfLines();
+
+		int vdpSize = vdp->getSpriteSize();
+		int vdpMag = vdp->isSpriteMag();
+		int vdpTransparent = vdp->getTransparency();
+
+		int vdpPatBase = vdp->getSpritePatternTableBase();
+		int vdpAttBase = vdp->getSpriteAttributeTableBase() & ~(attMult(vdpMode) - 1);
+
+		auto vramSize = std::min(vdp->getVRAM().getSize(), 0x20000u); // max 128kB
+
+		auto palette = manager.palette->getPalette(vdp);
+		// TODO? if (color0 < 16) palette[0] = palette[color0];
+
+		bool manMode   = overrideAll || overrideMode;
+		bool manSize   = overrideAll || overrideSize;
+		bool manMag    = overrideAll || overrideMag;
+		bool manTrans  = overrideAll || overrideTrans;
+		bool manPat    = overrideAll || overridePat;
+		bool manAtt    = overrideAll || overrideAtt;
+		bool manScroll = overrideAll || overrideScroll;
+		bool manLines  = overrideAll || overrideLines;
+
+		im::TreeNode("Settings", ImGuiTreeNodeFlags_DefaultOpen, [&]{
+			overridableSettings("VDP settings", {}, overrideAll, {
+				{tmpStrCat("Sprite mode: ", modeToStr(vdpMode)), &overrideMode, [&]{
+					if (manMode && isMSX1) manualMode = 1;
+					im::Combo("##mode", modeToStr(manualMode), [&]{
+						if (ImGui::Selectable("1")) manualMode = 1;
+						if (!isMSX1 && ImGui::Selectable("2")) manualMode = 2;
+					});
+				}},
+				{tmpStrCat("Sprite size: ", sizeToStr(vdpSize)), &overrideSize, [&]{
+					im::Combo("##size", sizeToStr(manualSize), [&]{
+						if (ImGui::Selectable(" 8 x  8")) manualSize =  8;
+						if (ImGui::Selectable("16 x 16")) manualSize = 16;
+					});
+				}},
+				{tmpStrCat("Sprites magnified: ", yesNo(vdpMag)), &overrideMag, [&]{
+					ImGui::Combo("##mag", &manualMag, "no\000yes\000");
+				}},
+				{tmpStrCat("Color 0 transparent: ", yesNo(vdpTransparent)), &overrideTrans, [&]{
+					ImGui::Combo("##trans", &manualTransparent, "no\000yes\000");
+				}},
+				{tmpStrCat("Pattern table: 0x", hex_string<5>(vdpPatBase)), &overridePat, [&]{
+					comboHexSequence<5>("##pat", &manualPatBase, 8 * 256, vramSize, 0);
+				}},
+				{tmpStrCat("Attribute table: 0x", hex_string<5>(vdpAttBase | (vdpMode == 2 ? 512 : 0))), &overrideAtt, [&]{
+					comboHexSequence<5>("##att", &manualAttBase, attMult(manualMode), vramSize, manualMode == 2 ? 512 : 0);
+				}},
+				{tmpStrCat("Vertical scroll: ", vdpVerticalScroll), &overrideScroll, [&]{
+					ImGui::InputInt("##verticalScroll", &manualVerticalScroll);
+					manualVerticalScroll &= 0xff;
+				}},
+				{tmpStrCat("Visible lines: ", (vdpLines == 192) ? "192"sv : "212"sv), &overrideLines, [&]{
+					ImGui::Combo("##lines", &manualLines, "192\000212\000256\000");
+				}},
+			});
+			ImGui::SameLine();
+			ImGui::Dummy(ImVec2(25, 1));
+			ImGui::SameLine();
+			im::Group([&]{
+				manager.palette->drawSelector();
+				ImGui::Separator();
+				zoomAndGridSettings(zoom, grid, gridColor);
+
+				checkerBoardSettings("Used as background in 'Sprite attribute' and 'Rendered sprites' view",
+				                     checkerBoardColor1, checkerBoardColor2, checkerBoardSize);
+			});
+		});
+		ImGui::Separator();
+
+		auto formatClipboardData = [&](unsigned address, unsigned size) {
+			return formatVramData([&](unsigned addr) { return vram[addr]; }, address, size);
+		};
+
+		int mode = manMode ? manualMode : vdpMode;
+		int size = manSize ? manualSize : vdpSize;
+		int mag  = manMag ? manualMag  : vdpMag;
+		int verticalScroll = manScroll ? manualVerticalScroll : vdpVerticalScroll;
+		int lines = manLines ? (manualLines == 0 ? 192 :
+		                        manualLines == 1 ? 212 :
+		                                           256)
+		                     : vdpLines;
+		int transparent  = manTrans ? manualTransparent  : vdpTransparent;
+
+		VramTable patTable(vram, planar);
+		unsigned patReg = (manPat ? (manualPatBase | ((8 * 256) - 1)) : vdp->getSpritePatternTableBase()) >> 11;
+		patTable.setRegister(patReg, 11);
+		patTable.setIndexSize(11);
+
+		VramTable attTable(vram, planar);
+		unsigned attReg = (manAtt ? (manualAttBase | (attMult(manualMode) - 1)) : vdp->getSpriteAttributeTableBase()) >> 7;
+		attTable.setRegister(attReg, 7);
+		attTable.setIndexSize((mode == 2) ? 10 : 7);
+
+		// create pattern texture
+		std::array<uint32_t, 256 * 64> pixels;
+		if (mode != 0) {
+			auto pat = [&](unsigned i) { return patTable[i]; };
+			if (size == 8) {
+				renderSpritePatterns8 (pat, pixels);
+			} else {
+				renderSpritePatterns16(pat, pixels);
+			}
+			updateTexture(patternTex, {256, 64}, pixels);
+		} else {
+			pixels[0] = getColor(imColor::GRAY);
+			updateTexture(patternTex, {1, 1}, pixels);
+		}
+
+		// create grid texture
+		int zm = 2 * (1 + zoom);
+		auto gColor = ImGui::ColorConvertFloat4ToU32(gridColor);
+		if (grid) {
+			updateGridTexture(gridTex, gl::ivec2{size * zm}, gColor);
+		}
+
+		// create checker board texture
+		if (checkerBoardSize) {
+			updateCheckerBoardTexture(checkerTex,
+			                          ImGui::ColorConvertFloat4ToU32(checkerBoardColor1),
+			                          ImGui::ColorConvertFloat4ToU32(checkerBoardColor2));
+		}
+		im::TreeNode("Sprite patterns", ImGuiTreeNodeFlags_DefaultOpen, [&]{
+			auto fullSize = gl::vec2(256, 64) * float(zm);
+			im::Child("##pattern", {0, childHeightWithScrollbar(fullSize.y)}, 0, ImGuiWindowFlags_HorizontalScrollbar, [&]{
+				auto pos1 = ImGui::GetCursorPos();
+				gl::vec2 scrnPos = ImGui::GetCursorScreenPos();
+				ImGui::Image(patternTex.getImGui(), fullSize);
+				gl::vec2 zoomPatSize{float(size * zm)};
+				bool hovered = ImGui::IsItemHovered() && (mode != 0);
+				if (hovered) {
+					gridPosition = hoveredCell(scrnPos, zoomPatSize);
+				}
+				ImGui::SameLine();
+				im::Group([&]{
+					auto pattern = spritePatternAt(gridPosition, size);
+					bool popup = copyToClipboardPopup("CopySpriteDataPopup", "Copy pattern data to clipboard", [&] {
+						return formatClipboardData(patTable.getAddress(8 * pattern), size == 16 ? 32 : 8);
+					});
+					if (hovered || popup) {
+						ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1); // HACK !!
+						ImGui::StrCat("pattern: ", pattern);
+						ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1); // HACK !!
+						ImGui::StrCat("address: 0x", hex_string<5>(patTable.getAddress(8 * pattern)));
+						ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1); // HACK !!
+						auto [uv1, uv2] = spritePatternUV(pattern, size);
+						int z = (size == 16) ? 3 : 6;
+						if (grid) {
+							updateGridTexture(zoomGridTex, gl::ivec2{z * zm}, gColor);
+						}
+						imageWithGrid(patternTex, float(z) * zoomPatSize, uv1, uv2,
+						              grid ? &zoomGridTex : nullptr, gl::vec2{float(size)});
+					} else {
+						ImGui::Dummy(zoomPatSize);
+					}
+				});
+				if (grid) {
+					ImGui::SetCursorPos(pos1);
+					ImGui::Image(gridTex.getImGui(), fullSize, {}, spritePatternCells(size));
+				}
+			});
+		});
+		ImGui::Separator();
+
+		im::TreeNode("Sprite attributes", ImGuiTreeNodeFlags_DefaultOpen, [&]{
+			auto zoomSize = float(zm * size);
+			auto fullSize = zoomSize * gl::vec2(8, 4);
+			auto hoverY = 3.0f * (ImGui::GetTextLineHeight() - 1.0f)
+			            + float(3 * zm) * float(size);
+			im::Child("##attrib", {0, childHeightWithScrollbar(std::max(fullSize.y, hoverY))}, 0, ImGuiWindowFlags_HorizontalScrollbar, [&]{
+				if (mode == 0) {
+					ImGui::TextUnformatted("No sprites in this screen mode"sv);
+				} else {
+					gl::vec2 topLeft = ImGui::GetCursorPos();
+					gl::vec2 scrnPos = ImGui::GetCursorScreenPos();
+					drawCheckerBoard(checkerTex, fullSize, checkerBoardSize);
+					for (auto row : xrange(4)) {
+						for (auto column : xrange(8)) {
+							int sprite = 8 * row + column;
+							ImGui::SetCursorPos(topLeft + zoomSize * gl::vec2(float(column), float(row)));
+							renderSpriteAttrib(attTable, sprite, mode, size, transparent,
+							                   float(zm), palette, patternTex.getImGui());
+						}
+					}
+					ImGui::SetCursorPos(topLeft);
+					if (grid) {
+						ImGui::Image(gridTex.getImGui(), fullSize,
+							{}, gl::vec2{8, 4});
+					} else {
+						ImGui::Dummy(fullSize);
+					}
+					gl::vec2 zoomPatSize{float(size * zm)};
+					bool hovered = ImGui::IsItemHovered();
+					if (hovered) {
+						gridPosition = hoveredCell(scrnPos, zoomPatSize);
+					}
+					auto sprite = 8 * gridPosition.y + gridPosition.x;
+					auto addr = getSpriteAttrAddr(sprite, mode);
+					bool popup = (mode == 2) && copyToClipboardPopup("CopySpriteDataPopup", "Copy color data to clipboard", [&]{
+						return formatClipboardData(attTable.getAddress(getSpriteColorAddr(sprite, mode)), size);
+					});
+					if (hovered || popup) {
+						ImGui::SameLine();
+						im::Group([&]{
+							ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1); // HACK !!
+							ImGui::StrCat("sprite: ", sprite);
+							ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1); // HACK !!
+							ImGui::StrCat("address: 0x", hex_string<5>(attTable.getAddress(addr)));
+							ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1); // HACK !!
+							auto pos = ImGui::GetCursorPos();
+							drawCheckerBoard(checkerTex, 3.0f * zoomPatSize, 3 * checkerBoardSize);
+							ImGui::SetCursorPos(pos);
+							renderSpriteAttrib(attTable, sprite, mode, size, transparent,
+							                   float(3 * zm), palette, patternTex.getImGui());
+						});
+						ImGui::SameLine();
+						im::Group([&]{
+							ImGui::StrCat("x: ", attTable[addr + 1],
+							              "  y: ", attTable[addr + 0]);
+							ImGui::StrCat("pattern: ", attTable[addr + 2]);
+							if (mode == 1) {
+								auto c = attTable[addr + 3];
+								ImGui::StrCat("color: ", c & 15, (c & 0x80 ? " (EC)"sv : ""sv));
+							} else {
+								int colorBase = getSpriteColorAddr(sprite, mode);
+								im::StyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1), [&]{ // Tighten spacing
+									ImGui::TextUnformatted("Colors per line (hex):"sv);
+									for (auto y : xrange(4)) {
+										for (auto x : xrange(4)) {
+											auto line = 4 * y + x;
+											auto a = attTable[colorBase + line];
+											ImGui::StrCat(hex_string<1>(line), ": ",
+											              hex_string<1>(a & 15),
+											              (a & 0xe0 ? '*' : ' '),
+											              ' ');
+											if (x != 3) ImGui::SameLine();
+										}
+									}
+									ImGui::StrCat("address: 0x", hex_string<5>(attTable.getAddress(colorBase)));
+								});
+							}
+						});
+					}
+				}
+			});
+		});
+		ImGui::Separator();
+
+		im::TreeNode("Rendered sprites", ImGuiTreeNodeFlags_DefaultOpen, [&]{
+			std::array<uint8_t, 256> spriteCount = {}; // zero initialize, not capped at the limit
+			std::array<std::array<SpriteChecker::SpriteInfo, 32 + 1>, 256> spriteBuffer; // uninitialized
+			std::array<SpriteBox, 32> spriteBoxes; // uninitialized
+
+			uint8_t spriteLimit = (mode == 1) ? 4 : 8;
+			uint8_t stopY = (mode == 1) ? 208 : 216;
+			uint8_t patMask = (size == 8) ? 0xff : 0xfc;
+			int magFactor = mag ? 2 : 1;
+			auto magSize = magFactor * size;
+
+			uint8_t spriteCnt = 0;
+			for (/**/; spriteCnt < 32; ++spriteCnt) {
+				int addr = getSpriteAttrAddr(spriteCnt, mode);
+				uint8_t originalY = attTable[addr + 0];
+				if (enableStopY && (originalY == stopY)) break;
+				auto y = uint8_t(originalY + 1 - verticalScroll);
+				int initialY = y;
+
+				uint8_t x    = attTable[addr + 1];
+				uint8_t pat  = attTable[addr + 2] & patMask;
+				uint8_t att1 = attTable[addr + 3]; // only mode 1
+
+				bool anyEC = false;
+				bool anyNonEC = false;
+				for (int spriteY : xrange(size)) { // each line in the sprite
+					auto attr = [&]{
+						if (mode != 2) return att1;
+						int colorBase = getSpriteColorAddr(spriteCnt, mode);
+						return attTable[colorBase + spriteY];
+					}();
+
+					bool EC = attr & 0x80;
+					(EC ? anyEC : anyNonEC) = true;
+					int xx = EC ? x - 32 : x;
+
+					auto pattern = [&]{
+						uint8_t p0 = patTable[8 * pat + spriteY +  0];
+						SpriteChecker::SpritePattern result = p0 << 24;
+						if (size == 8) return result;
+						uint8_t p1 = patTable[8 * pat + spriteY + 16];
+						return result | (p1 << 16);
+					}();
+					if (mag) pattern = SpriteChecker::doublePattern(pattern);
+
+					for ([[maybe_unused]] int mm : xrange(magFactor)) {
+						auto count = spriteCount[y];
+						if (!enableLimitPerLine || (count < spriteLimit)) {
+							auto& spr = spriteBuffer[y][count];
+							spr.pattern = pattern;
+							spr.x = narrow<int16_t>(xx);
+							spr.colorAttrib = attr;
+
+							spriteBuffer[y][count + 1].colorAttrib = 0; // sentinel (mode 2)
+						}
+						spriteCount[y] = count + 1;
+						++y; // wraps 256->0
+					}
+				}
+				assert(anyEC || anyNonEC);
+				spriteBoxes[spriteCnt] = SpriteBox{
+					.x = anyEC ? x - 32 : x,
+					.y = initialY,
+					.w = magSize + (anyEC && anyNonEC ? 32 : 0),
+					.h = magSize,
+					.sprite = spriteCnt,
+					.vramX = x,
+					.vramY = originalY,
+					.pattern = pat};
+			}
+
+			std::array<uint32_t, 256 * 256> screen; // TODO screen6 striped colors
+			memset(screen.data(), 0, sizeof(uint32_t) * 256 * lines); // transparent
+			for (auto line : xrange(lines)) {
+				auto count = enableLimitPerLine ? std::min(spriteCount[line], spriteLimit)
+				                                : spriteCount[line];
+				if (count == 0) continue;
+				auto lineBuf = subspan<256>(screen, 256 * line);
+
+				if (mode == 1) {
+					auto visibleSprites = subspan(spriteBuffer[line], 0, count);
+					for (const auto& spr : std::views::reverse(visibleSprites)) {
+						uint8_t colIdx = spr.colorAttrib & 0x0f;
+						if (colIdx == 0 && transparent) continue;
+						auto color = palette[colIdx];
+
+						auto pattern = spr.pattern;
+						int x = spr.x;
+						if (!SpriteConverter::clipPattern(x, pattern, 0, 256)) continue;
+
+						while (pattern) {
+							if (pattern & 0x8000'0000) {
+								lineBuf[x] = color;
+							}
+							pattern <<= 1;
+							++x;
+						}
+					}
+				} else if (mode == 2) {
+					auto visibleSprites = subspan(spriteBuffer[line], 0, count + 1); // +1 for sentinel
+
+					// see SpriteConverter
+					int first = 0;
+					while (true /*sentinel*/) {
+						if ((visibleSprites[first].colorAttrib & 0x40) == 0) [[likely]] {
+							break;
+						}
+						++first;
+					}
+					for (int i = narrow<int>(count - 1); i >= first; --i) {
+						const auto& spr = visibleSprites[i];
+						uint8_t c = spr.colorAttrib & 0x0F;
+						if (c == 0 && transparent) continue;
+
+						auto pattern = spr.pattern;
+						int x = spr.x;
+						if (!SpriteConverter::clipPattern(x, pattern, 0, 256)) continue;
+
+						while (pattern) {
+							if (pattern & 0x8000'0000) {
+								uint8_t color = c;
+								// Merge in any following CC=1 sprites.
+								for (int j = i + 1; /*sentinel*/; ++j) {
+									const auto& info2 = visibleSprites[j];
+									if (!(info2.colorAttrib & 0x40)) break;
+									unsigned shift2 = x - info2.x;
+									if ((shift2 < 32) &&
+									((info2.pattern << shift2) & 0x8000'0000)) {
+										color |= info2.colorAttrib & 0x0F;
+									}
+								}
+								// TODO screen 6
+								//	auto pixL = palette[color >> 2];
+								//	auto pixR = palette[color & 3];
+								//	lineBuf[x * 2 + 0] = pixL;
+								//	lineBuf[x * 2 + 1] = pixR;
+								lineBuf[x] = palette[color];
+							}
+							++x;
+							pattern <<= 1;
+						}
+					}
+				}
+			}
+			updateTexture(renderTex, {256, lines}, screen, true); // with wrapping
+
+			static_vector<SpriteBox, 2 * 32> clippedBoxes;
+			for (int sprite : xrange(spriteCnt)) {
+				const auto& b = spriteBoxes[sprite];
+				int x = b.x;
+				int y = b.y;
+				int w = b.w;
+				int h = b.h;
+				if (!clipSpriteBoxSide(x, w, 256)) continue;
+
+				int yEnd = y + h;
+				if (yEnd < 256) {
+					clippedBoxes.push_back(SpriteBox{x, y, w, h, b.sprite, b.vramX, b.vramY, b.pattern});
+				} else {
+					clippedBoxes.push_back(SpriteBox{x, y, w, 256 - y, b.sprite, b.vramX, b.vramY, b.pattern});
+					clippedBoxes.push_back(SpriteBox{x, 0, w, yEnd - 256, b.sprite, b.vramX, b.vramY, b.pattern});
+				}
+			}
+
+			auto fullSize = float(zm) * gl::vec2(256, float(lines));
+			im::Child("##screen", {0.0f, childHeightWithScrollbar(fullSize.y)}, 0, ImGuiWindowFlags_HorizontalScrollbar, [&]{
+				auto* drawList = ImGui::GetWindowDrawList();
+				gl::vec2 scrnPos = ImGui::GetCursorScreenPos();
+
+				gl::vec2 topLeft = ImGui::GetCursorPos();
+				drawCheckerBoard(checkerTex, fullSize, checkerBoardSize);
+				ImGui::SetCursorPos(topLeft);
+				ImGui::Image(renderTex.getImGui(), fullSize);
+				bool hovered = ImGui::IsItemHovered();
+				auto hoverPos = hoveredCell(scrnPos, gl::vec2(float(zm)));
+				ImGui::SameLine();
+				auto visibleLines = std::span(spriteCount).first(lines);
+				spritesPerLineHistogram(showSpritesPerLine, visibleLines, spriteLimit, 32, float(zm));
+
+				im::Group([&]{
+					spriteBoxSettings(drawBoundingBox, boundingBoxColor, boundingBoxOnAll);
+					{
+						auto maxStr = tmpStrCat("Max ", spriteLimit, " sprites per line");
+						ImGui::Checkbox(maxStr.c_str(), &enableLimitPerLine);
+					}
+					{
+						auto stopStr = tmpStrCat("Stop at y=", stopY);
+						ImGui::Checkbox(stopStr.c_str(), &enableStopY);
+					}
+					spritesPerLineSettings(showSpritesPerLine, visibleLines, spriteLimit);
+
+					if (hovered) {
+						ImGui::Separator();
+						auto [hx, hy] = hoverPos;
+						ImGui::StrCat("x,y=", hx, ',', hy, " (0x", hex_string<2>(hx), ",0x", hex_string<2>(hy), ')');
+						ImGui::Spacing();
+						printSpriteBoxes(clippedBoxes, hoverPos, 2);
+					}
+				});
+
+				if (drawBoundingBox) {
+					drawSpriteBoxes(drawList, scrnPos, gl::vec2{float(zm)}, clippedBoxes, boundingBoxColor,
+					                boundingBoxOnAll == 1, hovered, hoverPos);
+				}
+			});
+		});
+
+	});
+}
+
+} // namespace openmsx

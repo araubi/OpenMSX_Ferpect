@@ -1,0 +1,236 @@
+name: Build openMSX
+description: "Builds the openMSX code in the base folder, no matter how it got there"
+inputs:
+  os:
+    required: true
+    description: "The OS to build for"
+  cpu:
+    required: true
+    description: "The CPU to build for"
+  flavour:
+    required: false
+    description: "The flavour to build"
+    default: opt
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Linux prerequisites
+      if: ${{ inputs.os == 'linux' }}
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install libgl-dev libglu1-mesa-dev libasound2-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxss-dev libxtst-dev
+    - name: Install extra Linux prerequisites for native/dynamic build (e.g. for unittesting)
+      if: ${{ inputs.os == 'linux' && (inputs.flavour == 'unittest' || inputs.flavour == 'super-opt' || inputs.flavour == 'debug')}}
+      shell: bash
+      run: sudo apt-get install libsdl3-dev libpng-dev tcl-dev libglew-dev libsdl3-ttf-dev libvorbis-dev libtheora-dev libogg-dev libao-dev libfreetype6-dev
+    - name: Install Flatpak prerequisites
+      if: ${{ inputs.os == 'flatpak' }}
+      shell: bash
+      run: |
+        sudo apt-get update && sudo apt-get install flatpak flatpak-builder
+        # flatpak-builder sandboxes the build with unprivileged user namespaces,
+        # which Ubuntu restricts by default.
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    - name: Install Windows prerequisites
+      if: ${{ contains(inputs.os, 'mingw') }}
+      shell: bash
+      run: sudo apt-get install mingw-w64 gcc make tcl
+    - name: Install dmgbuild for the styled Darwin disk image
+      if: ${{ inputs.os == 'darwin' }}
+      shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/dmgbuild"
+        "$RUNNER_TEMP/dmgbuild/bin/pip" install --require-hashes --only-binary=:all: \
+          -r build/package-darwin/dmgbuild-requirements.txt
+        echo "$RUNNER_TEMP/dmgbuild/bin" >> "$GITHUB_PATH"
+        echo "REQUIRE_DMGBUILD=1" >> "$GITHUB_ENV"
+    - name: Add NDK to PATH
+      if: ${{ contains(inputs.os, 'android') }}
+      shell: bash
+      run: echo "$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+    - name: Configure MinGW to use Posix threads
+      if: ${{ contains(inputs.os, 'mingw') }}
+      shell: bash
+      run: |
+        sudo update-alternatives --set i686-w64-mingw32-gcc /usr/bin/i686-w64-mingw32-gcc-posix
+        sudo update-alternatives --set i686-w64-mingw32-g++ /usr/bin/i686-w64-mingw32-g++-posix
+        sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+        sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+    - name: Add MSBuild to PATH for Windows VC build
+      if: ${{ inputs.os == 'windows-vc' }}
+      uses: microsoft/setup-msbuild@v3
+    - name: Cache 3rdparty downloads and sources
+      if: ${{ inputs.os != 'flatpak' }}
+      id: cache-3rdparty-src
+      uses: actions/cache@v5
+      with:
+        path: derived/3rdparty
+        key: 3rdparty-src-${{ hashFiles('build/packages.py', 'build/3rdparty/*.diff') }}
+    - name: Cache 3rdparty libs
+      if: ${{ inputs.os != 'flatpak' }}
+      id: cache-3rdparty
+      uses: actions/cache@v5
+      with:
+        path: derived/*/3rdparty
+        key: ${{ github.ref }}-${{ inputs.os }}-${{ inputs.cpu }}-${{ inputs.flavour }}-${{ hashFiles('build/packages.py', 'build/3rdparty.mk', 'build/3rdparty/*', 'build/platform-*.mk', 'build/flavour-*.mk') }}
+    - name: Cache Flatpak build state (downloads and built dependencies)
+      if: ${{ inputs.os == 'flatpak' }}
+      uses: actions/cache@v5
+      with:
+        path: derived/flatpak/state
+        key: flatpak-state-${{ inputs.cpu }}-${{ hashFiles('build/package-flatpak/*.yaml') }}
+    - name: Download 3rd party packages for Windows VC build
+      if: ${{ inputs.os == 'windows-vc' && steps.cache-3rdparty-src.outputs.cache-hit != 'true' }}
+      shell: pwsh
+      run: python build/thirdparty_download.py windows
+    - name: Get number of CPU cores
+      uses: SimenB/github-actions-cpu-cores@v3
+      id: cpu-cores
+    - name: Make
+      if: ${{ inputs.os != 'windows-vc' && inputs.os != 'flatpak' }}
+      shell: bash
+      run: |
+        CXX_PART=""
+        BUILD_TARGET="staticbindist"
+        # run with minimal g++ version for native debug build, to get that covered
+        if [ "${{ inputs.flavour }}" = "debug" ]; then
+          CXX_PART="CXX=g++-13"
+        fi
+        if [ "${{ inputs.flavour }}" = "unittest" ] || [ "${{ inputs.flavour }}" = "super-opt" ] || [ "${{ inputs.flavour }}" = "debug" ]; then
+          BUILD_TARGET=""
+        fi
+        make \
+          -j ${{ steps.cpu-cores.outputs.count }} \
+          OPENMSX_TARGET_CPU=${{ inputs.cpu }} \
+          OPENMSX_TARGET_OS=${{ inputs.os }} \
+          OPENMSX_FLAVOUR=${{ inputs.flavour }} \
+          $CXX_PART \
+          $BUILD_TARGET
+    - name: Build Flatpak
+      if: ${{ inputs.os == 'flatpak' }}
+      shell: bash
+      run: |
+        flatpak-builder --user --install-deps-from=flathub \
+          --disable-rofiles-fuse --force-clean \
+          --state-dir=derived/flatpak/state --repo=derived/flatpak/repo \
+          derived/flatpak/build build/package-flatpak/org.openmsx.openMSX.yaml
+    - name: msbuild
+      if: ${{ inputs.os == 'windows-vc' }}
+      shell: pwsh
+      run: |
+        msbuild /m /p:Configuration=Release /p:Platform=x64 build\3rdparty\3rdparty.sln /m
+        msbuild /m /p:Configuration=Release /p:Platform=x64 build\msvc\openmsx.sln /m
+    - name: Download wxCatapult release artifact
+      if: ${{ inputs.os == 'windows-vc' }}
+      shell: bash
+      run: |
+        mkdir -p derived/wxcatapult
+        curl -L -o wxcatapult.zip \
+          https://github.com/openMSX/wxcatapult/releases/download/wxcatapult-ci-latest/catapult-19.0-8-g7ff2d47-Windows-VC-x64-bin.zip
+        unzip -q wxcatapult.zip -d derived/wxcatapult
+
+    # Install WiX so we can build the MSI; only for windows-vc runs
+    - name: Install WiX Toolset 3.11
+      if: ${{ inputs.os == 'windows-vc' }}
+      shell: pwsh
+      run: |
+        choco install wixtoolset --version=3.11.2.4516 -y
+        refreshenv
+
+    # Normalize the downloaded Catapult artifact into the legacy layout used
+    # by the packaging scripts (derived/.../install/catapult.exe etc.)
+    - name: Prepare Catapult artifact for packaging
+      if: ${{ inputs.os == 'windows-vc' }}
+      shell: bash
+      run: |
+        # Use the repo-local helper to normalize the wxCatapult artifact
+        py build/package-windows/prepare_catapult.py derived/wxcatapult \
+          build/package-windows/catapult-staging
+
+    # Generate MSI installer only (will use the normalized catapult staging tree)
+    - name: Generate MSI installer (with Catapult)
+      if: ${{ inputs.os == 'windows-vc' }}
+      shell: pwsh
+      run: |
+        cmd /c "build\\package-windows\\package.cmd" x64 release build\\package-windows\\catapult-staging MSIONLY
+
+    - name: Create ZIP package of VC build (without Catapult)
+      if: ${{ inputs.os == 'windows-vc' }}
+      shell: pwsh
+      run: cmd /c "build\\package-windows\\package.cmd" x64 release NOCATAPULT ZIPONLY
+    - name: Determine version and redistributable paths and names
+      shell: bash
+      id: openmsx
+      run: |
+        OPENMSX_VERSION=`python3 build/version.py`
+        DERIVED_PATH=derived/${{ inputs.cpu }}-${{ inputs.os }}-${{ inputs.flavour }}-3rd
+        TARGET_BASE=openmsx-${OPENMSX_VERSION}-${{ inputs.os }}-${{ inputs.cpu }}-bin
+        if [ "${{ inputs.os }}" = "darwin" ]; then
+          SINGLE_OUTPUT_FILE=openmsx-${OPENMSX_VERSION}-mac-${{ inputs.cpu }}-bin.dmg
+        elif [ "${{ inputs.os }}" = "flatpak" ]; then
+          DERIVED_PATH=derived/flatpak
+          SINGLE_OUTPUT_FILE=openmsx-${OPENMSX_VERSION}-linux-${{ inputs.cpu }}.flatpak
+        else
+          SINGLE_OUTPUT_FILE=${TARGET_BASE}.zip
+        fi
+        echo "version=$OPENMSX_VERSION" >> $GITHUB_OUTPUT
+        echo "derived_path=$DERIVED_PATH" >> $GITHUB_OUTPUT
+        echo "single_output_file=$SINGLE_OUTPUT_FILE" >> $GITHUB_OUTPUT
+        echo "target_file_base=$TARGET_BASE" >> $GITHUB_OUTPUT
+        echo "target_file_pdb=openmsx-$OPENMSX_VERSION-${{ inputs.os }}-${{ inputs.cpu }}-pdb" >> $GITHUB_OUTPUT
+    - name: Run unittests
+      if: ${{ inputs.flavour == 'unittest' }}
+      shell: bash
+      run: derived/${{ inputs.cpu }}-${{ inputs.os }}-${{ inputs.flavour }}/bin/openmsx
+    - name: Create Flatpak bundle for upload
+      if: ${{ inputs.os == 'flatpak' }}
+      shell: bash
+      run: |
+        flatpak build-bundle \
+          --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+          derived/flatpak/repo \
+          "${{ steps.openmsx.outputs.derived_path }}/${{ steps.openmsx.outputs.single_output_file }}" \
+          org.openmsx.openMSX
+    - name: Rename output folder and zip it for upload
+      if: ${{ inputs.os != 'windows-vc' && inputs.os != 'darwin' && inputs.os != 'flatpak' && inputs.flavour != 'unittest' && inputs.flavour != 'super-opt' && inputs.flavour != 'debug' }}
+      shell: bash
+      run: |
+        cd ${{ steps.openmsx.outputs.derived_path }}/bindist
+        mv install ../${{ steps.openmsx.outputs.target_file_base }}
+        cd ..
+        zip -r "${{ steps.openmsx.outputs.single_output_file}}" "${{ steps.openmsx.outputs.target_file_base }}"
+    - name: Upload redistributable ${{ steps.openmsx.outputs.single_output_file}}
+      if: ${{ inputs.os != 'windows-vc' && inputs.flavour != 'unittest' && inputs.flavour != 'super-opt' && inputs.flavour != 'debug' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.openmsx.outputs.single_output_file }}
+        path: ${{ steps.openmsx.outputs.derived_path }}/${{ steps.openmsx.outputs.single_output_file }}
+        if-no-files-found: error
+    - name: Upload probe logging zip
+      if: ${{ inputs.os != 'windows-vc' && inputs.os != 'flatpak' && inputs.flavour != 'unittest' && inputs.flavour != 'super-opt' && inputs.flavour != 'debug' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.openmsx.outputs.target_file_base }}-proberesults.zip
+        path: ${{ steps.openmsx.outputs.derived_path }}/config
+    - name: Upload Windows VC redistributable
+      if: ${{ inputs.os == 'windows-vc' && inputs.flavour != 'unittest' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.openmsx.outputs.target_file_base }}.zip
+        path: derived\x64-VC-Release\package-windows\*-bin.zip
+        if-no-files-found: error
+    - name: Upload Windows VC MSI redistributable (zip)
+      if: ${{ inputs.os == 'windows-vc' && inputs.flavour != 'unittest' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.openmsx.outputs.target_file_base }}-msi.zip
+        path: derived\x64-VC-Release\package-windows\*-msi.zip
+        if-no-files-found: error
+    - name: Upload Windows VC debug symbols
+      if: ${{ inputs.os == 'windows-vc' && inputs.flavour != 'unittest' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.openmsx.outputs.target_file_pdb }}.zip
+        path: derived\x64-VC-Release\package-windows\*-pdb.zip
+        if-no-files-found: error

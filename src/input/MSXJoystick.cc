@@ -1,0 +1,187 @@
+#include "MSXJoystick.hh"
+
+#include "CommandController.hh"
+#include "Event.hh"
+#include "IntegerSetting.hh"
+#include "JoystickManager.hh"
+#include "MSXEventDistributor.hh"
+#include "StateChange.hh"
+#include "StateChangeDistributor.hh"
+#include "serialize.hh"
+#include "serialize_meta.hh"
+
+#include "ranges.hh"
+#include "unreachable.hh"
+#include "xrange.hh"
+
+namespace openmsx {
+
+TclObject MSXJoystick::getDefaultConfig(JoystickId joyId, const JoystickManager& joystickManager)
+{
+	auto buttons = joystickManager.getNumButtons(joyId);
+	if (!buttons) return {};
+
+	TclObject listA, listB;
+	auto joy = joyId.str();
+	for (auto b : xrange(*buttons)) {
+		((b & 1) ? listB : listA).addListElement(tmpStrCat(joy, " button", b));
+	}
+	return TclObject(TclObject::MakeDictTag{},
+		"UP",    makeTclList(tmpStrCat(joy, " -axis1"), tmpStrCat(joy, " hat0 up")),
+		"DOWN",  makeTclList(tmpStrCat(joy, " +axis1"), tmpStrCat(joy, " hat0 down")),
+		"LEFT",  makeTclList(tmpStrCat(joy, " -axis0"), tmpStrCat(joy, " hat0 left")),
+		"RIGHT", makeTclList(tmpStrCat(joy, " +axis0"), tmpStrCat(joy, " hat0 right")),
+		"A",     listA,
+		"B",     listB);
+}
+
+MSXJoystick::MSXJoystick(CommandController& commandController_,
+                         MSXEventDistributor& eventDistributor_,
+                         StateChangeDistributor& stateChangeDistributor_,
+                         JoystickManager& joystickManager_,
+                         uint8_t id_)
+	: commandController(commandController_)
+	, eventDistributor(eventDistributor_)
+	, stateChangeDistributor(stateChangeDistributor_)
+	, joystickManager(joystickManager_)
+	, configSetting(commandController, tmpStrCat("msxjoystick", id_, "_config"),
+		"msxjoystick mapping configuration", getDefaultConfig(JoystickId(id_ - 1), joystickManager).getString())
+	, description(strCat("MSX joystick ", id_, ". Mapping is fully configurable."))
+	, id(id_)
+{
+	configSetting.setChecker([this](const TclObject& newValue) {
+		this->checkJoystickConfig(newValue); });
+	try {
+		// fill in 'bindings'
+		checkJoystickConfig(configSetting.getValue());
+	} catch (MSXException& /*e*/) {
+		configSetting.setValue(getDefaultConfig(JoystickId(id - 1), joystickManager));
+	}
+	joystickManager.attach(*this);
+}
+
+MSXJoystick::~MSXJoystick()
+{
+	joystickManager.detach(*this);
+	if (isPluggedIn()) {
+		MSXJoystick::unplugHelper(EmuTime::dummy());
+	}
+}
+
+void MSXJoystick::checkJoystickConfig(const TclObject& newValue)
+{
+	auto newBindings = parseBooleanInputBindings(
+		commandController.getInterpreter(), newValue, keyNames);
+
+	// only change current bindings when parsing was fully successful
+	copy_to_range(newBindings, bindings);
+}
+
+// Pluggable
+zstring_view MSXJoystick::getName() const
+{
+	switch (id) {
+		case 1: return "msxjoystick1";
+		case 2: return "msxjoystick2";
+		default: UNREACHABLE;
+	}
+}
+
+zstring_view MSXJoystick::getDescription() const
+{
+	return description;
+}
+
+void MSXJoystick::plugHelper(Connector& /*connector*/, EmuTime /*time*/)
+{
+	eventDistributor.registerEventListener(*this);
+	stateChangeDistributor.registerListener(*this);
+}
+
+void MSXJoystick::unplugHelper(EmuTime /*time*/)
+{
+	stateChangeDistributor.unregisterListener(*this);
+	eventDistributor.unregisterEventListener(*this);
+}
+
+
+// MSXJoystickDevice
+uint8_t MSXJoystick::peek(EmuTime /*time*/) const
+{
+	return pin8 ? 0x3F : status;
+}
+
+void MSXJoystick::write(uint8_t value, EmuTime /*time*/)
+{
+	pin8 = (value & 0x04) != 0;
+}
+
+
+// MSXEventListener
+void MSXJoystick::signalMSXEvent(const Event& event,
+                                 EmuTime time) noexcept
+{
+	uint8_t press = 0;
+	uint8_t release = 0;
+
+	auto getJoyDeadThreshold = [&](JoystickId joyId) {
+		return joystickManager.getJoyDeadThreshold(joyId);
+	};
+	for (int i : xrange(6)) {
+		for (const auto& binding : bindings[i]) {
+			if (auto onOff = match(binding, event, getJoyDeadThreshold)) {
+				(*onOff ? press : release) |= 1 << i;
+			}
+		}
+	}
+
+	if (((status & ~press) | release) != status) {
+		stateChangeDistributor.distributeNew<MSXJoyState>(
+			time, id, press, release);
+	}
+}
+
+// StateChangeListener
+void MSXJoystick::signalStateChange(const StateChange& event)
+{
+	const auto* mjs = std::get_if<MSXJoyState>(&event);
+	if (!mjs) return;
+	if (mjs->getId() != id) return;
+
+	status = (status & ~mjs->getPress()) | mjs->getRelease();
+}
+
+void MSXJoystick::stopReplay(EmuTime time) noexcept
+{
+	uint8_t newStatus = JOY_UP | JOY_DOWN | JOY_LEFT | JOY_RIGHT |
+	                    JOY_BUTTONA | JOY_BUTTONB;
+	if (newStatus != status) {
+		uint8_t release = newStatus & ~status;
+		stateChangeDistributor.distributeNew<MSXJoyState>(
+			time, id, uint8_t(0), release);
+	}
+}
+
+// Observer<JoystickManager>
+void MSXJoystick::update(const JoystickManager& /*manager*/) noexcept
+{
+	// A host joystick was added or removed: the default mapping may change.
+	configSetting.setDefaultValue(getDefaultConfig(JoystickId(id - 1), joystickManager));
+}
+
+
+template<typename Archive>
+void MSXJoystick::serialize(Archive& ar, unsigned /*version*/)
+{
+	ar.serialize("status", status);
+	if constexpr (Archive::IS_LOADER) {
+		if (isPluggedIn()) {
+			plugHelper(*getConnector(), EmuTime::dummy());
+		}
+	}
+	// no need to serialize 'pin8'
+}
+INSTANTIATE_SERIALIZE_METHODS(MSXJoystick);
+REGISTER_POLYMORPHIC_INITIALIZER(Pluggable, MSXJoystick, "MSXJoystick");
+
+} // namespace openmsx

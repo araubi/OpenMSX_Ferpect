@@ -1,0 +1,117 @@
+#include "ColecoJoystickIO.hh"
+
+#include "ColecoJoystick.hh"
+#include "JoystickPort.hh"
+#include "MSXMotherBoard.hh"
+#include "Reactor.hh"
+#include "serialize.hh"
+
+#include "Math.hh"
+#include "enumerate.hh"
+
+#include <array>
+
+namespace openmsx {
+
+ColecoJoystickIO::ColecoJoystickIO(const DeviceConfig& config)
+	: MSXDevice(config)
+	, keyboard(
+		config.getMotherBoard(),
+		config.getMotherBoard().getScheduler(),
+		config.getMotherBoard().getCommandController(),
+		config.getMotherBoard().getReactor().getEventDistributor(),
+		config.getMotherBoard().getMSXEventDistributor(),
+		config.getMotherBoard().getStateChangeDistributor(),
+		Keyboard::Matrix::CVJOY,
+		config)
+{
+	MSXMotherBoard& motherBoard = getMotherBoard();
+	auto time = getCurrentTime();
+	for (auto [i, port] : enumerate(ports)) {
+		port = &motherBoard.getJoystickPort(unsigned(i));
+		// Clear strobe bit, or MSX joysticks will stay silent.
+		port->write(0xFB, time);
+	}
+	reset(time);
+}
+
+void ColecoJoystickIO::reset(EmuTime /*time*/)
+{
+	joyMode = 0;
+}
+
+const ColecoJoystick* ColecoJoystickIO::getColecoJoystick(int joyPort) const
+{
+	const auto* port = dynamic_cast<const JoystickPort*>(ports[joyPort]);
+	if (!port) return nullptr;
+	return dynamic_cast<const ColecoJoystick*>(&port->getPlugged());
+}
+
+byte ColecoJoystickIO::readIO(uint16_t port, EmuTime time)
+{
+	const int joyPort = (port >> 1) & 1;
+	return portValue(joyPort, ports[joyPort]->read(time));
+}
+
+byte ColecoJoystickIO::peekIO(uint16_t port, EmuTime time) const
+{
+	const int joyPort = (port >> 1) & 1;
+	return portValue(joyPort, ports[joyPort]->peek(time));
+}
+
+byte ColecoJoystickIO::portValue(int joyPort, byte joyStatus) const
+{
+	auto keys = keyboard.getKeys();
+
+	if (joyMode == 0) {
+		// Combine keypad rows of the key matrix and the keypad of a
+		// plugged-in ColecoVision controller, convert to high-active and
+		// drop unused bits.
+		// Note: The keypad can only return one button press, but I don't know
+		//       what happens if you press two buttons at once.
+		unsigned keypad = keys[joyPort * 2 + 2] | (keys[joyPort * 2 + 3] << 8);
+		if (const auto* cj = getColecoJoystick(joyPort)) {
+			keypad &= cj->getKeypad();
+		}
+		unsigned keypadStatus = ~keypad & 0xFFF;
+		static constexpr std::array<byte, 13> keyEnc = {
+			0xF, 0xA, 0xD, 0x7, 0xC, 0x2, 0x3, 0xE, 0x5, 0x1, 0xB, 0x9, 0x6
+		};
+		return keyEnc[Math::findFirstSet(keypadStatus)]
+		     | 0x30 // not connected
+		     | ((joyStatus << 1) & (keys[joyPort] >> 1) & 0x40); // trigger B
+	} else {
+		// Map MSX joystick direction bits to Coleco bits.
+		byte value =
+			  ( joyStatus       & 0x01) // up
+			| ((joyStatus >> 2) & 0x02) // right
+			| ((joyStatus << 1) & 0x04) // down
+			| ((joyStatus << 1) & 0x08) // left
+			| 0x30 // not connected
+			| ((joyStatus << 2) & 0x40) // trigger A
+			;
+			// Note: ColEm puts 0 in bit 7.
+			//       I don't know why this is different from bit 4 and 5.
+		// Combine with row 0/1 of keyboard matrix.
+		return value & (keys[joyPort] | ~0x4F);
+	}
+}
+
+void ColecoJoystickIO::writeIO(uint16_t port, byte /*value*/, EmuTime /*time*/)
+{
+	joyMode = (port >> 6) & 1;
+}
+
+template<typename Archive>
+void ColecoJoystickIO::serialize(Archive& ar, unsigned version)
+{
+	ar.template serializeBase<MSXDevice>(*this);
+	ar.serialize("joyMode", joyMode);
+	if (ar.versionAtLeast(version, 2)) {
+		ar.serialize("keyboard", keyboard);
+	}
+}
+INSTANTIATE_SERIALIZE_METHODS(ColecoJoystickIO);
+REGISTER_MSXDEVICE(ColecoJoystickIO, "ColecoJoystick");
+
+} // namespace openmsx
