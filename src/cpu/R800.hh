@@ -19,8 +19,11 @@ class R800TYPE : public CPUClock
 public:
 	void updateVisiblePage(uint8_t page, uint8_t primarySlot, uint8_t secondarySlot)
 	{
+		visiblePrimary[page] = primarySlot;
+		visibleSecondary[page] = secondarySlot;
 		extraMemoryDelay[page] =
 			extraMemoryDelays[page][primarySlot][secondarySlot];
+		externalSlot[page] = primarySlot == one_of(1, 2);
 	}
 	void setDRAMmode(bool dram)
 	{
@@ -30,6 +33,15 @@ public:
 		extraMemoryDelays[1][0][0] = val; // BASIC
 		extraMemoryDelays[0][3][1] = val; // SUB-ROM
 		extraMemoryDelays[1][3][1] = val; // KANJI-DRIVER
+		// Also update the delays of the slots that are visible right
+		// now (otherwise e.g. the BIOS keeps the ROM delay in DRAM mode
+		// until the slot selection of page 0 changes). Measured on a
+		// real FS-A1ST: in DRAM mode an LDIR from the BIOS is exactly as
+		// fast as an LDIR from RAM.
+		for (auto page : xrange(4)) {
+			extraMemoryDelay[page] = extraMemoryDelays[page]
+				[visiblePrimary[page]][visibleSecondary[page]];
+		}
 	}
 
 protected:
@@ -52,7 +64,13 @@ protected:
 					extraMemoryDelays[page][prim][sec] = [&] {
 						if (prim == one_of(1, 2)) {
 							// external slot
-							return 2;
+							// Measured on a real FS-A1ST (code
+							// and LDIR from a cartridge, with two
+							// different cartridges): 3 wait cycles
+							// plus aligning to the 3.5MHz bus
+							// (see POST_MEM) matches within 2%,
+							// 2 wait cycles was up to 34% too fast.
+							return 3;
 						} else if ((prim == 3) && (sec == 0)) {
 							// internal RAM
 							return 0;
@@ -66,6 +84,9 @@ protected:
 		}
 		for (auto page : xrange(4)) {
 			extraMemoryDelay[page] = extraMemoryDelays[page][0][0];
+			externalSlot[page] = false;
+			visiblePrimary[page] = 0;
+			visibleSecondary[page] = 0;
 		}
 	}
 
@@ -94,6 +115,9 @@ protected:
 	template<bool POST_PB>
 	ALWAYS_INLINE void POST_MEM(unsigned address)
 	{
+		// The external cartridge slots run on the slower 3.5MHz bus
+		// (like I/O, see waitForEvenCycle()).
+		if (externalSlot[address >> 14]) [[unlikely]] waitForEvenCycle(0);
 		add(extraMemoryDelay[address >> 14]);
 		if constexpr (POST_PB) {
 			R800ForcePageBreak();
@@ -123,6 +147,7 @@ protected:
 	template<bool POST_PB>
 	ALWAYS_INLINE void POST_WORD(unsigned address)
 	{
+		if (externalSlot[address >> 14]) [[unlikely]] waitForEvenCycle(0);
 		add(2 * extraMemoryDelay[address >> 14]);
 		if constexpr (POST_PB) {
 			R800ForcePageBreak();
@@ -286,6 +311,9 @@ private:
 
 	std::array<std::array<std::array<unsigned, 4>, 4>, 4> extraMemoryDelays;
 	std::array<unsigned, 4> extraMemoryDelay;
+	std::array<bool, 4> externalSlot;
+	std::array<uint8_t, 4> visiblePrimary;
+	std::array<uint8_t, 4> visibleSecondary;
 };
 
 } // namespace openmsx

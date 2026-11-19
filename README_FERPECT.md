@@ -1,6 +1,6 @@
-# openMSX FERPECT v0.22b
+# openMSX FERPECT v0.22c
 
-Versión 0.22b, hecha a partir de **openMSX 22.0** (código de [openMSX/openMSX](https://github.com/openMSX/openMSX), commit `b34dbbd`) con cuatro cambios pensados para quien carga cintas TSX, para quien juega en MSX1 y para quien programa para MSX. Sirve para probarlos antes de proponerlos al proyecto original.
+Versión 0.22c, hecha a partir de **openMSX 22.0** (código de [openMSX/openMSX](https://github.com/openMSX/openMSX), commit `b34dbbd`) con cambios pensados para quien carga cintas TSX, para quien juega en MSX1 o turbo R y para quien programa para MSX. Sirve para probarlos antes de proponerlos al proyecto original.
 
 Todo lo demás es openMSX tal cual: mismas máquinas, mismas ROM de sistema (`share/systemroms`), mismos ajustes.
 
@@ -54,6 +54,17 @@ Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`).
 FERPECT espera ahora 4 ciclos de la VDP en vez de 7 antes de buscar el hueco de acceso. Con eso da el mismo límite que el aparato: pierde bytes con 23 T o menos y ninguno con 24 T o más. Así, War in Middle Earth se ve bien con el ajuste normal (`too_fast_vram_access real`).
 
 La regla para programar no cambia: deja al menos 29 T entre escrituras con la imagen encendida, porque no todos los MSX1 tienen por qué ser iguales que el HB-20P.
+
+### 5. Turbo R: velocidad del R800 medida en un FS-A1ST real
+
+Con dos ROM de prueba (`ferpect/prueba_turbor/`) que miden con el temporizador del turbo R (E6h) cuánto tardan 2048 operaciones de cada tipo, en un Panasonic FS-A1ST. Se repitió con dos cartuchos distintos, con expansor y sin él, y salió lo mismo.
+- Con el Z80, la VDP, la RAM, el PSG y el OPLL, openMSX ya coincidía (diferencias de un 1 %).
+- **Modo R800 DRAM:** leer la BIOS va igual de rápido que la RAM, pero openMSX la seguía leyendo a velocidad de ROM. Era un fallo: al pasar a modo DRAM no se actualizaba la página que ya estaba seleccionada. Arreglado.
+- **Cartuchos con el R800:** en el aparato van más lentos que en openMSX. El código ejecutado desde un cartucho iba hasta un 34 % más rápido de la cuenta. FERPECT pone ahora 3 ciclos de espera en las ranuras externas (antes 2) y alinea cada acceso con el bus de 3,5 MHz, como ya se hacía con la E/S. Así todas las medidas quedan a menos de un 2,5 % del aparato.
+
+### 6. V9990: el WAIT existe (todavía sin emular)
+
+Medido con `ferpect/prueba_v9990/v9test.asm` en el mismo FS-A1ST con un GFX9000: escribir la paleta o los registros no frena, pero escribir en la VRAM sí (con el Z80 en P1, un 6 % más lento; con el R800, entre un 5 % y un 55 %), y leer la VRAM aún más (con el R800, hasta el doble). openMSX no lo emula. Hace falta medirlo con más detalle antes de emularlo.
 
 Los dos avisos están **desactivados por defecto** y no cambian la emulación. Para quitarlos, basta con dejar el ajuste vacío (`set too_fast_opll_access_callback ""`).
 
