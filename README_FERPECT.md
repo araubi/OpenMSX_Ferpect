@@ -1,6 +1,6 @@
-# openMSX FERPECT
+# openMSX FERPECT v0.22a
 
-Versión de **openMSX 22.0** (código de [openMSX/openMSX](https://github.com/openMSX/openMSX), commit `b34dbbd`) con tres cambios pensados para quien carga cintas TSX y para quien programa para MSX. Sirve para probarlos antes de proponerlos al proyecto original.
+Versión 0.22a, hecha a partir de **openMSX 22.0** (código de [openMSX/openMSX](https://github.com/openMSX/openMSX), commit `b34dbbd`) con tres cambios pensados para quien carga cintas TSX y para quien programa para MSX. Sirve para probarlos antes de proponerlos al proyecto original.
 
 Todo lo demás es openMSX tal cual: mismas máquinas, mismas ROM de sistema (`share/systemroms`), mismos ajustes.
 
