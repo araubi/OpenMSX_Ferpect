@@ -5,6 +5,7 @@ openMSX 22.0 con estos cambios (ver [README_FERPECT.md](README_FERPECT.md)):
 3. **Aviso de escritura demasiado rápida al YM2413** (`too_fast_opll_access_callback`, issue #935 de openMSX).
 4. **MSX1: escritura en la VRAM medida en un Sony HB-20P real**: se pierden bytes con 23 T o menos entre escrituras, y no con 24 T o más (antes, hasta 26 T). Arregla el mapa de War in Middle Earth.
 5. **Turbo R: R800 medido en un FS-A1ST real**: en modo DRAM la BIOS ya va a velocidad de RAM (era un fallo), y los cartuchos van con 3 ciclos de espera alineados al bus de 3,5 MHz (antes 2). Todas las medidas quedan a menos de un 2,5 % del aparato.
+6. **V9990 (GFX9000): WAIT emulado**, medido en un FS-A1ST con un GFX9000. Un acceso suelto a la VRAM no espera, pero los accesos seguidos con la imagen encendida sí: en P1 más que en B1, y con el R800 bastante (escribir la VRAM hasta un 55 % más lento, leerla hasta el doble). Antes, openMSX no frenaba nunca.
 
 Los avisos están desactivados por defecto. Zip para Windows de 64 bits: se descomprime, se ponen las ROM de sistema en `share/systemroms` y se ejecuta `openmsx.exe`.
 

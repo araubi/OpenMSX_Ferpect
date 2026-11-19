@@ -62,9 +62,15 @@ Con dos ROM de prueba (`ferpect/prueba_turbor/`) que miden con el temporizador d
 - **Modo R800 DRAM:** leer la BIOS va igual de rápido que la RAM, pero openMSX la seguía leyendo a velocidad de ROM. Era un fallo: al pasar a modo DRAM no se actualizaba la página que ya estaba seleccionada. Arreglado.
 - **Cartuchos con el R800:** en el aparato van más lentos que en openMSX. El código ejecutado desde un cartucho iba hasta un 34 % más rápido de la cuenta. FERPECT pone ahora 3 ciclos de espera en las ranuras externas (antes 2) y alinea cada acceso con el bus de 3,5 MHz, como ya se hacía con la E/S. Así todas las medidas quedan a menos de un 2,5 % del aparato.
 
-### 6. V9990: el WAIT existe (todavía sin emular)
+### 6. V9990: el WAIT del GFX9000, emulado
 
-Medido con `ferpect/prueba_v9990/v9test.asm` en el mismo FS-A1ST con un GFX9000: escribir la paleta o los registros no frena, pero escribir en la VRAM sí (con el Z80 en P1, un 6 % más lento; con el R800, entre un 5 % y un 55 %), y leer la VRAM aún más (con el R800, hasta el doble). openMSX no lo emula. Hace falta medirlo con más detalle antes de emularlo.
+Medido con tres ROM de prueba (`ferpect/prueba_v9990/`) en el mismo FS-A1ST con un GFX9000:
+- Escribir la paleta o los registros no frena nunca. Con la pantalla apagada, el Z80 tampoco espera al acceder a la VRAM.
+- Un acceso suelto a la VRAM no espera nunca, caiga donde caiga en la línea (`v9test3.asm`).
+- Los accesos seguidos sí esperan con la imagen encendida (`v9test2.asm`). Con el Z80, separados de 17 a 32 T, se pierden hasta 2,3 T por acceso en P1 y hasta 0,5 T en B1. Con 40 T o más no se pierde nada.
+- Con el R800 (OTIR e INIR, `v9test.asm`), escribir la VRAM va entre un 5 % y un 55 % más lento, y leerla, hasta el doble.
+
+FERPECT lo emula así: el V9990 guarda un acceso de la CPU y lo completa más tarde. Si la CPU vuelve a acceder antes de que el anterior se haya completado, espera. En las líneas visibles, la VRAM está ocupada al principio de cada línea: unos 36 T del Z80 en P1 y 22 T en B1. El acceso se completa después, más un tiempo de servicio en P1. Con eso, las medidas del Z80 quedan cerca del aparato y el R800 pasa de no esperar nada a esperar más o menos lo que espera en el aparato. P2 y los demás modos B no se han medido: usan los valores de P1 y B1.
 
 Los dos avisos están **desactivados por defecto** y no cambian la emulación. Para quitarlos, basta con dejar el ajuste vacío (`set too_fast_opll_access_callback ""`).
 

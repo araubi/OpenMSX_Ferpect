@@ -1,6 +1,7 @@
 #include "V9990.hh"
 
 #include "Display.hh"
+#include "MSXCPU.hh"
 #include "Reactor.hh"
 #include "RendererFactory.hh"
 #include "V9990Renderer.hh"
@@ -195,6 +196,7 @@ uint8_t V9990::readIO(uint16_t port, EmuTime time)
 	// execute side-effects
 	switch (port) {
 	case VRAM_DATA:
+		time = waitVRAMAccess(time, true);
 		if (!(regs[VRAM_READ_ADDRESS_2] & 0x80)) {
 			vramReadPtr = getVRAMAddr(VRAM_READ_ADDRESS_0) + 1;
 			setVRAMAddr(VRAM_READ_ADDRESS_0, vramReadPtr);
@@ -228,6 +230,42 @@ uint8_t V9990::readIO(uint16_t port, EmuTime time)
 		break;
 	}
 	return result;
+}
+
+EmuTime V9990::waitVRAMAccess(EmuTime time, bool read)
+{
+	// FERPECT. Measured on a GFX9000 in a Panasonic FS-A1ST (2026-11-19):
+	// - A single access never waits, wherever it falls in the line.
+	// - Back-to-back accesses wait when the display is on. A Z80 writing or
+	//   reading port 60h every 17-32 T loses up to 2.3 T per access in P1
+	//   and up to 0.5 T in B1 (8 bpp); 40 T or more never waits, and nothing
+	//   waits with the display off.
+	// Model fitted to those numbers (and to the R800 OTIR/INIR ones): during
+	// the displayed lines the VRAM is busy at the start of every line (P1:
+	// 432 UC ticks, about 36 Z80 T; Bx: 264 ticks, 22 T). A pending CPU
+	// access completes after that, plus a service time (P1: 72 ticks to
+	// write, 108 to read; Bx: none). One access is buffered, so the CPU only
+	// waits when it accesses the port again before the previous access has
+	// completed. P2 and the other Bx modes were not measured and use the
+	// P1 / B1 values.
+	if (time < vramAccessReady) {
+		getCPU().wait(vramAccessReady);
+		time = vramAccessReady;
+	}
+	const bool pMode = (mode == V9990DisplayMode::P1) ||
+	                   (mode == V9990DisplayMode::P2);
+	const int busy    = pMode ? 432 : 264;
+	const int service = !pMode ? 0 : (read ? 108 : 72);
+	int ticks = getUCTicksThisFrame(time);
+	if (displayEnabled) {
+		int line = (ticks / V9990DisplayTiming::UC_TICKS_PER_LINE) % verTiming->cycle;
+		int pos  = ticks % V9990DisplayTiming::UC_TICKS_PER_LINE;
+		if ((line >= getTopBorder()) && (line < getBottomBorder()) && (pos < busy)) {
+			ticks += busy - pos;
+		}
+	}
+	vramAccessReady = frameStartTime + uint64_t(ticks + service);
+	return time;
 }
 
 uint8_t V9990::peekIO(uint16_t port, EmuTime time) const
@@ -281,6 +319,7 @@ void V9990::writeIO(uint16_t port, uint8_t val, EmuTime time)
 				//  what the exact behaviour is
 				return;
 			}
+			time = waitVRAMAccess(time, false);
 			unsigned addr = getVRAMAddr(VRAM_WRITE_ADDRESS_0);
 			vram.writeVRAMCPU(addr, val, time);
 			if (!(regs[VRAM_WRITE_ADDRESS_2] & 0x80)) {

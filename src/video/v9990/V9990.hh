@@ -625,6 +625,13 @@ private:
 	unsigned vramReadPtr, vramWritePtr;
 	uint8_t vramReadBuffer;
 
+	/** FERPECT: the V9990 WAIT line (the GFX9000 connects it). A CPU access
+	  * to the VRAM data port is buffered and completes later; a second access
+	  * while the first one is pending stalls the CPU. Calibrated with the
+	  * ferpect/prueba_v9990 ROMs on a GFX9000 + FS-A1ST. */
+	EmuTime vramAccessReady = EmuTime::zero();
+	EmuTime waitVRAMAccess(EmuTime time, bool read);
+
 	/** Command Engine
 	  */
 	V9990CmdEngine cmdEngine;
