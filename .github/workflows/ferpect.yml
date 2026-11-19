@@ -35,7 +35,9 @@ jobs:
         VERSION=`cat FERPECT_VERSION | tr -d '\r\n'`
         NAME=openMSX-FERPECT-${VERSION}-windows-x86_64
         cd derived/x86_64-mingw-w64-opt-3rd
-        mv bindist/install "$NAME"
+        # the build action already moved bindist/install to openmsx-<version>-...-bin
+        SRC=`ls -d openmsx-*-bin | head -1`
+        mv "$SRC" "$NAME"
         cp ../../README_FERPECT.md "$NAME/"
         zip -qr "$NAME.zip" "$NAME"
         echo "version=$VERSION" >> $GITHUB_OUTPUT
