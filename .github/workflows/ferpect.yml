@@ -1,0 +1,64 @@
+name: FERPECT Windows build and release
+
+# Builds openMSX FERPECT for Windows (MinGW-w64, x86_64) on every push to
+# main. When the tag in FERPECT_VERSION has no GitHub Release yet, it
+# creates that Release and attaches the zip.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows x86_64 (MinGW-w64)
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Get current code from Git repo
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Build
+      uses: ./.github/actions/build
+      with:
+        os: mingw-w64
+        cpu: x86_64
+        flavour: opt
+    - name: Package
+      id: pkg
+      shell: bash
+      run: |
+        VERSION=`cat FERPECT_VERSION | tr -d '\r\n'`
+        NAME=openMSX-FERPECT-${VERSION}-windows-x86_64
+        cd derived/x86_64-mingw-w64-opt-3rd
+        mv bindist/install "$NAME"
+        cp ../../README_FERPECT.md "$NAME/"
+        zip -qr "$NAME.zip" "$NAME"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "zip=derived/x86_64-mingw-w64-opt-3rd/$NAME.zip" >> $GITHUB_OUTPUT
+        echo "name=$NAME" >> $GITHUB_OUTPUT
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.pkg.outputs.name }}
+        path: ${{ steps.pkg.outputs.zip }}
+        if-no-files-found: error
+    - name: Create GitHub Release (only if it does not exist yet)
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG=`cat FERPECT_VERSION | tr -d '\r\n'`
+        if gh release view "$TAG" > /dev/null 2>&1; then
+          echo "Release $TAG already exists, uploading the zip again"
+          gh release upload "$TAG" "${{ steps.pkg.outputs.zip }}" --clobber
+        else
+          gh release create "$TAG" "${{ steps.pkg.outputs.zip }}" \
+            --target "$GITHUB_SHA" \
+            --title "`cat FERPECT_TITLE | tr -d '\r\n'`" \
+            --notes-file RELEASE_NOTES.md
+        fi

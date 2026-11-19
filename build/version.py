@@ -21,11 +21,11 @@ packageVersionNumber = '22.0'
 androidReleaseVersionCode=22
 
 # Note: suffix should be empty or with dash, like "-rc2" or "-test1"
-packageVersionSuffix = ''
+packageVersionSuffix = '-ferpect'
 packageVersion = packageVersionNumber + packageVersionSuffix
 
 # Is this a release version ("True") or development version ("False").
-releaseFlag = False
+releaseFlag = True
 
 # Release year for copyright message. Make sure to update it when releasing.
 # (Or just when a new year arrives?)
