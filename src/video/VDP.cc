@@ -1042,11 +1042,21 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	// investigation. (Just guessing) possibly there are
 	// other variables that influence the exact timing (7
 	// vs 8 cycles).
+	//
+	// Update 2: measured on a Sony HB-20P (TMS9929A, PAL) with a test
+	// ROM that writes 1024 bytes in screen 2 (display on) with OUTs
+	// exactly N cycles apart (Z80 cycles including the M1 wait state),
+	// at 4 different positions in the frame: lots of lost bytes for
+	// N<=23, (practically) none for N>=24. With 7 TMS cycles openMSX
+	// loses bytes up to N=26 (e.g. the map of 'War in Middle Earth',
+	// drawn with OUTs 25 cycles apart, gets corrupted, while it's fine
+	// on the real machine). With 4 TMS cycles (Delta::CPU_16) openMSX
+	// gives the same threshold as the real machine.
 	cpuVramReqIsRead = isRead;
 	cpuVramReqData = cpuVramData;
 	pendingCpuAccess = true;
 	syncCpuVramAccess.setSyncPoint(
-		getAccessSlot(time, VDPAccessSlots::Delta::CPU_28));
+		getAccessSlot(time, VDPAccessSlots::Delta::CPU_16));
 }
 
 void VDP::scheduleV99x8VramAccess(bool isRead, EmuTime time)

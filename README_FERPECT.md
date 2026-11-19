@@ -1,6 +1,6 @@
-# openMSX FERPECT v0.22a
+# openMSX FERPECT v0.22b
 
-Versión 0.22a, hecha a partir de **openMSX 22.0** (código de [openMSX/openMSX](https://github.com/openMSX/openMSX), commit `b34dbbd`) con tres cambios pensados para quien carga cintas TSX y para quien programa para MSX. Sirve para probarlos antes de proponerlos al proyecto original.
+Versión 0.22b, hecha a partir de **openMSX 22.0** (código de [openMSX/openMSX](https://github.com/openMSX/openMSX), commit `b34dbbd`) con cuatro cambios pensados para quien carga cintas TSX, para quien juega en MSX1 y para quien programa para MSX. Sirve para probarlos antes de proponerlos al proyecto original.
 
 Todo lo demás es openMSX tal cual: mismas máquinas, mismas ROM de sistema (`share/systemroms`), mismos ajustes.
 
@@ -40,6 +40,20 @@ set too_fast_opll_access_callback toofastopllaccesscallback
 ```
 
 Avisa por la consola de errores con el puerto (0 = dirección, 1 = dato) y el nombre del aparato. Usa el tiempo emulado, así que no depende de la velocidad ni del procesador elegidos.
+
+### 4. MSX1: escritura en la VRAM medida en un aparato real
+
+openMSX supone que la VDP de un MSX1 (TMS9918/9928/9929) necesita al menos 27 T-states entre dos escrituras en la VRAM con la imagen encendida. Si van más seguidas, pierde bytes. El propio código de openMSX reconoce que ese valor es una suposición, que ya tuvieron que retocar por Chase HQ.
+
+Un ejemplo es War in Middle Earth: dibuja el mapa escribiendo un byte cada 25 T. En openMSX se pierden bytes y el mapa sale revuelto, pero en un Sony HB-20P de verdad se ve bien.
+
+Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`). Escribe 1024 bytes en SCREEN 2 con la imagen encendida, separando las escrituras de 17 a 32 T, y lo repite en 4 momentos distintos de la imagen. En el HB-20P (TMS9929A, PAL):
+- con 23 T o menos se pierden muchos bytes;
+- con 24 T o más no se pierde prácticamente ninguno (como mucho 1 de 1024).
+
+FERPECT espera ahora 4 ciclos de la VDP en vez de 7 antes de buscar el hueco de acceso. Con eso da el mismo límite que el aparato: pierde bytes con 23 T o menos y ninguno con 24 T o más. Así, War in Middle Earth se ve bien con el ajuste normal (`too_fast_vram_access real`).
+
+La regla para programar no cambia: deja al menos 29 T entre escrituras con la imagen encendida, porque no todos los MSX1 tienen por qué ser iguales que el HB-20P.
 
 Los dos avisos están **desactivados por defecto** y no cambian la emulación. Para quitarlos, basta con dejar el ajuste vacío (`set too_fast_opll_access_callback ""`).
 
