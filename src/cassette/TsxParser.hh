@@ -18,8 +18,28 @@ class TsxParser {
 public:
 	// output settings
 	static constexpr unsigned TZX_Z80_FREQ       = 3500000; // 3.5MHz (according to TZX spec: not 3.579545MHz)
-	static constexpr unsigned OUTPUT_FREQUENCY   = 58900;   // ~ = Z80_FREQ * 4 / T_STATES_MSX_PULSE
-	static constexpr float    T_STATES_MSX_PULSE = 238.f;
+	// Only used for the audio output (and to report a frequency), not for
+	// the signal the MSX reads: that one keeps the exact pulse lengths.
+	static constexpr unsigned OUTPUT_FREQUENCY   = 58900;
+
+	// The waveform is stored as a list of segments with a constant level,
+	// each packed in 16 bits: the level in the upper 2 bits and the length
+	// in T-states (of TZX_Z80_FREQ) in the lower 14 bits. Longer segments
+	// are split. Compared to sampling the signal at OUTPUT_FREQUENCY, this
+	// keeps the exact pulse lengths (sampling added up to 17us of jitter,
+	// enough to break e.g. 2400 baud KCS blocks), and it uses less memory.
+	static constexpr unsigned SEGMENT_LENGTH_BITS = 14;
+	static constexpr uint16_t SEGMENT_MAX_LENGTH  = (1 << SEGMENT_LENGTH_BITS) - 1;
+	enum class Level : uint8_t { SILENCE = 0, HIGH = 1, LOW = 2 };
+	[[nodiscard]] static constexpr uint16_t makeSegment(Level level, unsigned length) {
+		return uint16_t((unsigned(level) << SEGMENT_LENGTH_BITS) | length);
+	}
+	[[nodiscard]] static constexpr Level segmentLevel(uint16_t s) {
+		return Level(s >> SEGMENT_LENGTH_BITS);
+	}
+	[[nodiscard]] static constexpr unsigned segmentLength(uint16_t s) {
+		return s & SEGMENT_MAX_LENGTH;
+	}
 
 	enum class FileType : uint8_t {
 		ASCII, BINARY, BASIC, UNKNOWN,
@@ -28,7 +48,7 @@ public:
 public:
 	explicit TsxParser(std::span<const uint8_t> file);
 
-	[[nodiscard]] std::vector<int8_t>&& stealOutput() { return std::move(output); }
+	[[nodiscard]] std::vector<uint16_t>&& stealOutput() { return std::move(output); }
 	[[nodiscard]] std::optional<FileType> getFirstFileType() const { return firstFileType; }
 	[[nodiscard]] const std::vector<std::string>& getMessages() const { return messages; }
 
@@ -110,7 +130,7 @@ private:
 	void processBlock35(const Block35& b);
 	void processBlock4B(const Block4B& b);
 
-	void writeSample(uint32_t tStates, int8_t value);
+	void writeSegment(uint32_t tStates, Level level);
 	void writePulse(uint32_t tStates);
 	void writePulses(uint32_t count, uint32_t tStates);
 	void writeSilence(int s);
@@ -122,7 +142,7 @@ private:
 
 private:
 	// The parsed result is stored here
-	std::vector<int8_t> output;
+	std::vector<uint16_t> output;
 	std::vector<std::string> messages;
 	std::optional<FileType> firstFileType;
 
@@ -130,8 +150,7 @@ private:
 	std::span<const uint8_t> buf;
 
 	// Intermediate state while writing the waveform
-	float  accumBytes = 0.f;
-	int8_t currentValue = 127;
+	Level currentLevel = Level::HIGH;
 };
 
 #endif

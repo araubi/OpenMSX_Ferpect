@@ -7,6 +7,7 @@
 #include "strCat.hh"
 #include "xrange.hh"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 
@@ -59,7 +60,6 @@ TsxParser::TsxParser(std::span<const uint8_t> file)
 	}
 
 	while (!buf.empty()) {
-		accumBytes = 0.f;
 		auto blockId = get<uint8_t>();
 		switch (blockId) {
 		case B10_STD_BLOCK:
@@ -122,22 +122,26 @@ TsxParser::TsxParser(std::span<const uint8_t> file)
 	}
 }
 
-[[nodiscard]] static float tStates2samples(float tStates)
+void TsxParser::writeSegment(uint32_t tStates, Level level)
 {
-	return tStates * TsxParser::OUTPUT_FREQUENCY / TsxParser::TZX_Z80_FREQ;
-}
-
-void TsxParser::writeSample(uint32_t tStates, int8_t value)
-{
-	accumBytes += tStates2samples(float(tStates));
-	output.insert(end(output), int(accumBytes), value);
-	accumBytes -= float(int(accumBytes));
+	// Extend the previous segment when it has the same level.
+	if (!output.empty() && (segmentLevel(output.back()) == level)) {
+		unsigned prev = segmentLength(output.back());
+		unsigned extra = std::min<uint32_t>(tStates, SEGMENT_MAX_LENGTH - prev);
+		output.back() = makeSegment(level, prev + extra);
+		tStates -= extra;
+	}
+	while (tStates > 0) {
+		auto len = std::min<uint32_t>(tStates, SEGMENT_MAX_LENGTH);
+		output.push_back(makeSegment(level, len));
+		tStates -= len;
+	}
 }
 
 void TsxParser::writePulse(uint32_t tStates)
 {
-	writeSample(tStates, currentValue);
-	currentValue = int8_t(-currentValue);
+	writeSegment(tStates, currentLevel);
+	currentLevel = (currentLevel == Level::LOW) ? Level::HIGH : Level::LOW;
 }
 
 void TsxParser::writePulses(uint32_t count, uint32_t tStates)
@@ -148,8 +152,8 @@ void TsxParser::writePulses(uint32_t count, uint32_t tStates)
 void TsxParser::writeSilence(int ms)
 {
 	if (!ms) return;
-	output.insert(end(output), OUTPUT_FREQUENCY * ms / 1000, 0);
-	currentValue = 127;
+	writeSegment(uint32_t(ms) * (TZX_Z80_FREQ / 1000), Level::SILENCE);
+	currentLevel = Level::HIGH;
 }
 
 // Standard Speed Block
@@ -176,7 +180,7 @@ void TsxParser::processBlock11(const Block11& b)
 		error("Invalid block #11");
 	}
 
-	currentValue = -127;
+	currentLevel = Level::LOW;
 	writePulses(b.pilotLen, b.pilot);
 	writePulse(b.sync1);
 	writePulse(b.sync2);
@@ -226,7 +230,7 @@ void TsxParser::processBlock15(const Block15& b)
 	auto samples = get<uint8_t>(b.len);
 
 	auto writeBit = [&](uint8_t& sample) {
-		writeSample(b.bitTstates, (sample & 128) ? 127 : -127);
+		writeSegment(b.bitTstates, (sample & 128) ? Level::HIGH : Level::LOW);
 		sample <<= 1;
 	};
 	auto writeByte = [&](uint8_t sample, int nBits) {
