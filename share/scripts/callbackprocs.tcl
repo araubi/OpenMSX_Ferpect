@@ -89,6 +89,28 @@ proc default_dot_clock_direction_callback {} {
 }
 #set VDP.dot_clock_direction_callback default_dot_clock_direction_callback
 
+# Callback on writing VDP register 9 or 18 while a VDP command is in progress.
+# Not enabled by default.
+set_help_text regwriteduringcommandcallback \
+{This is an example of a reg_write_during_command callback function. To use it
+execute
+    set VDP.reg_write_during_command_callback regwriteduringcommandcallback
+After changing that setting this proc will be called whenever openMSX detects a
+write to VDP register 9 or 18 while a VDP command is still in progress. On a
+real V9938/V9958 such a write disturbs the running command (a byte in VRAM gets
+corrupted), but openMSX does not emulate that. This example callback proc only
+prints the register number, the value that was being written and the program
+counter.
+
+ @param reg The VDP register number that was being written (9 or 18).
+ @param val The value that was being written.
+}
+
+proc regwriteduringcommandcallback {reg val} {
+	message [format "VDP register %d written (value 0x%02X) while a VDP command is in progress, PC = 0x%04X. On a real V9938/V9958 this disturbs the command." $reg $val [reg PC]] warning
+}
+#set VDP.reg_write_during_command_callback regwriteduringcommandcallback
+
 proc sensorkidportstatuscallback {port value} {
 	message "Sensor Kid port $port has been [expr {$value ? "enabled" : "disabled"}]" info
 }

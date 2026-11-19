@@ -136,8 +136,10 @@ public:
 	  */
 	void updateDisplayMode(DisplayMode mode, bool cmdBit, EmuTime time);
 
-	// For debugging only
-	bool commandInProgress(EmuTime time) {
+	/** Is a command in progress (CE bit of S#2)? Used for debugging and
+	  * for detecting register writes that disturb a running command.
+	  */
+	[[nodiscard]] bool commandInProgress(EmuTime time) {
 		sync(time);
 		return status & CE;
 	}

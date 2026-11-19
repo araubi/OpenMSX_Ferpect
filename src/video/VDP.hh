@@ -1305,6 +1305,7 @@ private:
 
 	TclCallback tooFastCallback;
 	TclCallback dotClockDirectionCallback;
+	TclCallback regWriteDuringCmdCallback;
 
 	/** VDP version.
 	  */

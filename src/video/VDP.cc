@@ -170,6 +170,13 @@ VDP::VDP(const DeviceConfig& config)
 		"Tcl proc called when DLCLK is set as input",
 		"default_dot_clock_direction_callback",
 		Setting::Save::YES)
+	, regWriteDuringCmdCallback(
+		getCommandController(),
+		getName() + ".reg_write_during_command_callback",
+		"Tcl proc called when VDP register 9 or 18 is written while a "
+		"VDP command is in progress",
+		"",
+		Setting::Save::YES)
 	, cpu(getCPU()) // used frequently, so cache it
 	, fixedVDPIOdelayCycles(getDelayCycles(getMotherBoard().getMachineConfig()->getConfig().getChild("devices")))
 {
@@ -1376,6 +1383,22 @@ void VDP::changeRegister(uint8_t reg, uint8_t val, EmuTime time)
 
 	// Make sure only bits that actually exist are written.
 	val &= controlValueMasks[reg];
+
+	if (((reg == 9) || (reg == 18)) && cmdEngine->commandInProgress(time)) {
+		// On a real V9938/V9958, writing R#9 or R#18 while a command
+		// is in progress disturbs that command:
+		// - The transcription of the V9938 Technical Data Book on
+		//   map.grauw.nl has an editor's note at R#18: "modifying this
+		//   value while executing a VDP command when the sprites are
+		//   disabled will result in a corrupted byte".
+		// - Takayuki Hara (HRA!) lists the same for R#9 and R#18 in his
+		//   VDP guide "MSX Documents VDP" (github.com/hra1129/msx_documents).
+		// The exact effect is not known, so it's not emulated (yet).
+		// We only call a (by default empty) callback, so developers
+		// can find such writes. Also writes that don't change the
+		// value count.
+		regWriteDuringCmdCallback.execute(reg, val);
+	}
 	// Determine the difference between new and old value.
 	uint8_t change = val ^ controlRegs[reg];
 
