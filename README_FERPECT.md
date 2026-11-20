@@ -53,6 +53,8 @@ Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`).
 
 FERPECT espera ahora 4 ciclos de la VDP en vez de 7 antes de buscar el hueco de acceso. Con eso da el mismo límite que el aparato: pierde bytes con 23 T o menos y ninguno con 24 T o más. Así, War in Middle Earth se ve bien con el ajuste normal (`too_fast_vram_access real`).
 
+**Chips de Texas (v0.22e).** La misma ROM en un Toshiba HX-10D, que lleva un TMS9918A de Texas, pierde bytes también con 24 T y 25 T (en algunas pasadas, y muchos) y ninguno desde 26 T. El HB-20P lleva un Toshiba T6950. FERPECT da ahora a los chips de Texas 9 ciclos más de retraso: pierden con 24 T y 25 T (y unos pocos con 26 T). Los Toshiba siguen como el HB-20P.
+
 La regla para programar no cambia: deja al menos 29 T entre escrituras con la imagen encendida, porque no todos los MSX1 tienen por qué ser iguales que el HB-20P.
 
 ### 5. Turbo R: velocidad del R800 medida en un FS-A1ST real

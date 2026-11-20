@@ -1043,7 +1043,7 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	// other variables that influence the exact timing (7
 	// vs 8 cycles).
 	//
-	// Update 2: measured on a Sony HB-20P (TMS9929A, PAL) with a test
+	// Update 2: measured on a Sony HB-20P (Toshiba T6950, PAL) with a test
 	// ROM that writes 1024 bytes in screen 2 (display on) with OUTs
 	// exactly N cycles apart (Z80 cycles including the M1 wait state),
 	// at 4 different positions in the frame: lots of lost bytes for
@@ -1055,8 +1055,15 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	cpuVramReqIsRead = isRead;
 	cpuVramReqData = cpuVramData;
 	pendingCpuAccess = true;
+	// Update 3: the same ROM on a Toshiba HX-10D (Texas TMS9918A) loses bytes
+	// up to N=25 (at N=24 and N=25 only in some frame positions) and none
+	// from N=26 on. The Texas chips get the request 9 VDP ticks later, which
+	// gives losses up to N=25 (and a few at N=26). Toshiba chips keep the
+	// HB-20P timing.
+	EmuTime req = (version & VM_TOSHIBA_PALETTE) ? time
+	            : VDPClock(time) + uint64_t(9);
 	syncCpuVramAccess.setSyncPoint(
-		getAccessSlot(time, VDPAccessSlots::Delta::CPU_16));
+		getAccessSlot(req, VDPAccessSlots::Delta::CPU_16));
 }
 
 void VDP::scheduleV99x8VramAccess(bool isRead, EmuTime time)
