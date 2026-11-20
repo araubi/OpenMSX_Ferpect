@@ -1043,7 +1043,7 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	// other variables that influence the exact timing (7
 	// vs 8 cycles).
 	//
-	// Update 2: measured on a Sony HB-20P (Toshiba T6950, PAL) with a test
+	// Update 2: measured on a Sony HB-20P (Toshiba T6950A, PAL) with a test
 	// ROM that writes 1024 bytes in screen 2 (display on) with OUTs
 	// exactly N cycles apart (Z80 cycles including the M1 wait state),
 	// at 4 different positions in the frame: lots of lost bytes for

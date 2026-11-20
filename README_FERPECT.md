@@ -47,13 +47,13 @@ openMSX supone que la VDP de un MSX1 (TMS9918/9928/9929) necesita al menos 27 T-
 
 Un ejemplo es War in Middle Earth: dibuja el mapa escribiendo un byte cada 25 T. En openMSX se pierden bytes y el mapa sale revuelto, pero en un Sony HB-20P de verdad se ve bien.
 
-Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`). Escribe 1024 bytes en SCREEN 2 con la imagen encendida, separando las escrituras de 17 a 32 T, y lo repite en 4 momentos distintos de la imagen. En el HB-20P (Toshiba T6950, PAL):
+Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`). Escribe 1024 bytes en SCREEN 2 con la imagen encendida, separando las escrituras de 17 a 32 T, y lo repite en 4 momentos distintos de la imagen. En el HB-20P (Toshiba T6950A, PAL):
 - con 23 T o menos se pierden muchos bytes;
 - con 24 T o más no se pierde prácticamente ninguno (como mucho 1 de 1024).
 
 FERPECT espera ahora 4 ciclos de la VDP en vez de 7 antes de buscar el hueco de acceso. Con eso da el mismo límite que el aparato: pierde bytes con 23 T o menos y ninguno con 24 T o más. Así, War in Middle Earth se ve bien con el ajuste normal (`too_fast_vram_access real`).
 
-**Chips de Texas (v0.22e).** La misma ROM en un Toshiba HX-10D, que lleva un TMS9918A de Texas, pierde bytes también con 24 T y 25 T (en algunas pasadas, y muchos) y ninguno desde 26 T. El HB-20P lleva un Toshiba T6950. FERPECT da ahora a los chips de Texas 9 ciclos más de retraso: pierden con 24 T y 25 T (y unos pocos con 26 T). Los Toshiba siguen como el HB-20P.
+**Chips de Texas (v0.22e).** La misma ROM en un Toshiba HX-10D, que lleva un TMS9918A de Texas, pierde bytes también con 24 T y 25 T (en algunas pasadas, y muchos) y ninguno desde 26 T. El HB-20P lleva un Toshiba T6950A. FERPECT da ahora a los chips de Texas 9 ciclos más de retraso: pierden con 24 T y 25 T (y unos pocos con 26 T). Los Toshiba siguen como el HB-20P.
 
 La regla para programar no cambia: deja al menos 29 T entre escrituras con la imagen encendida, porque no todos los MSX1 tienen por qué ser iguales que el HB-20P.
 
