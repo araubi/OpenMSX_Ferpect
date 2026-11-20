@@ -47,7 +47,7 @@ openMSX supone que la VDP de un MSX1 (TMS9918/9928/9929) necesita al menos 27 T-
 
 Un ejemplo es War in Middle Earth: dibuja el mapa escribiendo un byte cada 25 T. En openMSX se pierden bytes y el mapa sale revuelto, pero en un Sony HB-20P de verdad se ve bien.
 
-Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`). Escribe 1024 bytes en SCREEN 2 con la imagen encendida, separando las escrituras de 17 a 32 T, y lo repite en 4 momentos distintos de la imagen. En el HB-20P (TMS9929A, PAL):
+Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`). Escribe 1024 bytes en SCREEN 2 con la imagen encendida, separando las escrituras de 17 a 32 T, y lo repite en 4 momentos distintos de la imagen. En el HB-20P (Toshiba T6950, PAL):
 - con 23 T o menos se pierden muchos bytes;
 - con 24 T o más no se pierde prácticamente ninguno (como mucho 1 de 1024).
 
