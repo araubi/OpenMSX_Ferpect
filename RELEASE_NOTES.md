@@ -6,6 +6,7 @@ openMSX 22.0 con estos cambios (ver [README_FERPECT.md](README_FERPECT.md)):
 4. **MSX1: escritura en la VRAM medida en un Sony HB-20P real**: se pierden bytes con 23 T o menos entre escrituras, y no con 24 T o más (antes, hasta 26 T). Arregla el mapa de War in Middle Earth. **v0.22e:** en las máquinas con chip de Texas (TMS9918A/9928A/9929A), medido en un Toshiba HX-10D, se pierden también con 24 y 25 T; las de chip Toshiba (T6950, como el HB-20P) siguen igual.
 5. **Turbo R: R800 medido en un FS-A1ST real**: en modo DRAM la BIOS ya va a velocidad de RAM (era un fallo), y los cartuchos van con 3 ciclos de espera alineados al bus de 3,5 MHz (antes 2). Todas las medidas quedan a menos de un 2,5 % del aparato.
 6. **V9990 (GFX9000): WAIT emulado**, medido en un FS-A1ST con un GFX9000. Un acceso suelto a la VRAM no espera, pero los accesos seguidos con la imagen encendida sí: en P1 más que en B1, y con el R800 bastante (escribir la VRAM hasta un 55 % más lento, leerla hasta el doble). Antes, openMSX no frenaba nunca.
+7. **MSX1: carrera del flag F medida en un Toshiba HX-21** (v0.22f): al esperar el cuadro leyendo S#0 en bucle, los VDP de MSX1 pierden menos cuadros que el V9938 (ventana de unos 1,9 T en vez de 4,7). FERPECT da ahora lo mismo que el aparato.
 
 Los avisos están desactivados por defecto. Zip para Windows de 64 bits: se descomprime, se ponen las ROM de sistema en `share/systemroms` y se ejecuta `openmsx.exe`.
 

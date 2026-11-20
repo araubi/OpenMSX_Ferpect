@@ -74,6 +74,12 @@ Medido con tres ROM de prueba (`ferpect/prueba_v9990/`) en el mismo FS-A1ST con 
 
 FERPECT lo emula así: el V9990 guarda un acceso de la CPU y lo completa más tarde. Si la CPU vuelve a acceder antes de que el anterior se haya completado, espera. En las líneas visibles, la VRAM está ocupada al principio de cada línea: unos 36 T del Z80 en P1 y 22 T en B1. El acceso se completa después, más un tiempo de servicio en P1. Con eso, las medidas del Z80 quedan cerca del aparato y el R800 pasa de no esperar nada a esperar más o menos lo que espera en el aparato. P2 y los demás modos B no se han medido: usan los valores de P1 y B1.
 
+### 7. MSX1: carrera del flag F medida en un Toshiba HX-21 (v0.22f)
+
+Si un programa espera el cuadro leyendo S#0 en bucle y la lectura cae justo cuando el VDP pone a 1 el flag F, la lectura lo borra sin que el Z80 lo vea y se pierde ese cuadro. openMSX ya lo emula en V9938 y V9958 (medido por su equipo), pero suponía que los VDP de MSX1 eran iguales que el V9938. Con la ROM `ferpect/prueba_flag/flagtest.asm` (1000 esperas con bucles de 39 a 134 T), un Toshiba HX-21 (TMS9928A) pierde unas 0,42 veces lo que suponía openMSX: la ventana dura unos 1,9 T, no 4,7. FERPECT usa ahora esa ventana en todos los VDP de MSX1 y da lo mismo que el aparato (por ejemplo, con IN cada 39 T: 50 cuadros perdidos de 1000 en el HX-21, 48 en FERPECT, 113 en openMSX 22). El FS-A1ST (V9958) ya daba lo mismo que openMSX. El T6950A (HB-20P) aún no está medido.
+
+**Regla:** no esperar el cuadro leyendo S#0 en bucle; usar la interrupción y una marca en RAM.
+
 Los dos avisos están **desactivados por defecto** y no cambian la emulación. Para quitarlos, basta con dejar el ajuste vacío (`set too_fast_opll_access_callback ""`).
 
 ## Descarga

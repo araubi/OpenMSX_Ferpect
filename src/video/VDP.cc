@@ -92,8 +92,16 @@ static constexpr FlagLostWindow F_LOST_V9958 = { 7, 14};
 static constexpr FlagLostWindow F_LOST_V9938 = {13, 15};
 static constexpr FlagLostWindow FH_LOST      = {21,  6};
 
+/** FERPECT: a Toshiba HX-21 (TMS9928A) loses about 0.42 times as many frames
+  * as openMSX's V9938 window when polling S#0 every 39-134 T (ROM
+  * ferpect/prueba_flag): a window of about 1.9 T = 11 VDP cycles. Only the
+  * width was measured; the split before/after is the V9938 one scaled down.
+  * The Toshiba T6950/T7937A are assumed to behave the same until measured. */
+static constexpr FlagLostWindow F_LOST_TMS99X8 = { 5,  6};
+
 static FlagLostWindow getFLostWindow(const VDP& vdp)
 {
+	if (vdp.isMSX1VDP()) return F_LOST_TMS99X8;
 	return vdp.hasYJK() ? F_LOST_V9958 : F_LOST_V9938;
 }
 
