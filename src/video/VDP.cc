@@ -96,11 +96,16 @@ static constexpr FlagLostWindow FH_LOST      = {21,  6};
   * as openMSX's V9938 window when polling S#0 every 39-134 T (ROM
   * ferpect/prueba_flag): a window of about 1.9 T = 11 VDP cycles. Only the
   * width was measured; the split before/after is the V9938 one scaled down.
-  * The Toshiba T6950/T7937A are assumed to behave the same until measured. */
+  * A Sony HB-20P (Toshiba T6950A) loses about half of that again: a window
+  * of about 1 T = 6 VDP cycles. The T7937A is assumed to be like the T6950A.
+  * (On the HB-20P the polling loop also runs about 8 % slower than on the
+  * other machines; the window is computed with the measured loop time.) */
 static constexpr FlagLostWindow F_LOST_TMS99X8 = { 5,  6};
+static constexpr FlagLostWindow F_LOST_TOSHIBA = { 3,  3};
 
 static FlagLostWindow getFLostWindow(const VDP& vdp)
 {
+	if (vdp.hasToshibaPalette()) return F_LOST_TOSHIBA;
 	if (vdp.isMSX1VDP()) return F_LOST_TMS99X8;
 	return vdp.hasYJK() ? F_LOST_V9958 : F_LOST_V9938;
 }

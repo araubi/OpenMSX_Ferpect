@@ -115,6 +115,11 @@ public:
 		return (version & VM_MSX1) != 0;
 	}
 
+	/** Is this a Toshiba VDP (T6950, T7937A)? (FERPECT) */
+	[[nodiscard]] bool hasToshibaPalette() const {
+		return (version & VM_TOSHIBA_PALETTE) != 0;
+	}
+
 	/** Is this a VDP only capable of PAL?
 	  * @return True iff this is a PAL only VDP
 	  */
