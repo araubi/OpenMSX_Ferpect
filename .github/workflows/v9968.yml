@@ -98,6 +98,7 @@ jobs:
       uses: actions/download-artifact@v6
       with:
         path: paquetes
+        pattern: openMSX-*
         merge-multiple: true
     - name: Create GitHub Release (only if it does not exist yet)
       shell: bash
@@ -115,3 +116,9 @@ jobs:
             --title "`cat FERPECT_TITLE | tr -d '\r\n'`" \
             --notes-file RELEASE_NOTES.md --prerelease --latest=false
         fi
+        # remove anything that is not one of our packages (older runs
+        # attached the build action's own artifacts too)
+        gh release view "$TAG" --json assets -q '.assets[].name' | \
+          grep -v '^openMSX-' | while read -r A; do
+            gh release delete-asset "$TAG" "$A" -y
+          done
