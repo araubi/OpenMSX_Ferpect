@@ -1,0 +1,1 @@
+Compilación de la rama `msx2pp` de buppu3 (https://github.com/buppu3/openMSX, commit aea339b) con el **V9968**, la VDP prevista para el MSX2++. Sin cambios en el código; todo el mérito es de buppu3. No lleva las mejoras de FERPECT. Paquetes para Windows, Linux y macOS (sin firmar). Ver README_V9968.md dentro del zip.
