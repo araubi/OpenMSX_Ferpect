@@ -49,11 +49,15 @@ Un ejemplo es War in Middle Earth: dibuja el mapa escribiendo un byte cada 25 T.
 
 Para comprobarlo se hizo una ROM de prueba (`ferpect/prueba_vram/vramtest.asm`). Escribe 1024 bytes en SCREEN 2 con la imagen encendida, separando las escrituras de 17 a 32 T, y lo repite en 4 momentos distintos de la imagen. En el HB-20P (Toshiba T6950A, PAL):
 - con 23 T o menos se pierden muchos bytes;
-- con 24 T o más no se pierde prácticamente ninguno (como mucho 1 de 1024).
+- con 24 T o más no se pierde prácticamente ninguno (como mucho 1 de 1024). (Ese «1» de 26 T era un fallo de la propia prueba: su fila de 26 T usaba `ADD A,1 / RET C` y solo escribía 256 bytes.)
 
 FERPECT espera ahora 4 ciclos de la VDP en vez de 7 antes de buscar el hueco de acceso. Con eso da el mismo límite que el aparato: pierde bytes con 23 T o menos y ninguno con 24 T o más. Así, War in Middle Earth se ve bien con el ajuste normal (`too_fast_vram_access real`).
 
-**Chips de Texas (v0.22e).** La misma ROM en un Toshiba HX-10D, que lleva un TMS9918A de Texas, pierde bytes también con 24 T y 25 T (en algunas pasadas, y muchos) y ninguno desde 26 T. El HB-20P lleva un Toshiba T6950A. FERPECT da ahora a los chips de Texas 9 ciclos más de retraso: pierden con 24 T y 25 T (y unos pocos con 26 T). Los Toshiba siguen como el HB-20P.
+**Chips de Texas (v0.22e).** La misma ROM en un Toshiba HX-10D, que lleva un TMS9918A de Texas, pierde bytes también con 24 T y 25 T (en algunas pasadas, y muchos) y ninguno desde 26 T. El HB-20P lleva un Toshiba T6950A. FERPECT da ahora a los chips de Texas 9 ciclos más de retraso: pierden con 24 T y 25 T. Los Toshiba siguen como el HB-20P.
+
+**Cómo falla, y por qué cambia de un día a otro (v0.22i).** Con `ferpect/prueba_vram/vramtest4.asm`, que llena la VRAM con EEh, escribe 00, 01, 02… y enseña los bytes del primer fallo, el HB-20P da siempre lo mismo: `2B 2C 2E EE 2F 30`. Cuando una escritura llega antes de que la VDP haya hecho la anterior, la anterior se hace con el dato nuevo y la nueva no se hace, pero el puntero avanza por las dos. Queda un byte equivocado y otro sin escribir, y el resto en su sitio. openMSX, en cambio, corría todos los bytes siguientes una posición, y por eso el mapa de War in Middle Earth salía revuelto en vez de con algún punto suelto como en el aparato.
+
+Ese mismo HB-20P, otro día, perdió bytes con 24 T y 25 T (unos 40 y 9 fallos de cada 1024 escrituras; ninguno con 26 T), cuando el 19-11 no había perdido ninguno. La explicación es que la fase entre el reloj del Z80 y el ciclo de memoria de la VDP queda fija mientras el MSX está encendido y cambia en cada encendido. FERPECT elige esa fase al azar al arrancar (de 0 a 5; con la 5 da la foto del 21-11 y con 0-2 la del 19-11). Se puede fijar con `set VDP.msx1_phase N` (-1 = la del arranque). Por ahora solo en los chips Toshiba; los de Texas siguen como en la v0.22e hasta medirlos con la misma ROM.
 
 La regla para programar no cambia: deja al menos 29 T entre escrituras con la imagen encendida, porque no todos los MSX1 tienen por qué ser iguales que el HB-20P.
 

@@ -7,6 +7,7 @@
 
 #include "Clock.hh"
 #include "EnumSetting.hh"
+#include "IntegerSetting.hh"
 #include "IRQHelper.hh"
 #include "InfoTopic.hh"
 #include "MSXDevice.hh"
@@ -1312,6 +1313,12 @@ private:
 	TclCallback dotClockDirectionCallback;
 	TclCallback regWriteDuringCmdCallback;
 
+	/** FERPECT: phase (0..5) between the Z80 clock and the Toshiba VDP memory
+	  * cycle, picked at random at power on; the setting forces one
+	  * (-1 = the random one). See scheduleTMS99x8VramAccess(). */
+	IntegerSetting msx1PhaseSetting;
+	int msx1Phase = 0;
+
 	/** VDP version.
 	  */
 	VdpVersion version;
@@ -1469,6 +1476,10 @@ private:
 	bool cpuVramReqIsRead;
 	uint8_t cpuVramReqData;
 	bool pendingCpuAccess; // always equal to syncCpuVramAccess.isPending()
+	/** FERPECT: VRAM pointer increments still owed by TMS99x8 write
+	  * requests that overwrote a pending write (see
+	  * scheduleTMS99x8VramAccess). */
+	int tmsOwedIncrements = 0;
 
 	/** The slot granted to the most recently accepted CPU-VRAM request, and
 	  * its class. It stays valid after that access has taken place, because
@@ -1525,7 +1536,7 @@ private:
 	MSXCPU& cpu;
 	const uint8_t fixedVDPIOdelayCycles;
 };
-SERIALIZE_CLASS_VERSION(VDP, 15);
+SERIALIZE_CLASS_VERSION(VDP, 16);
 
 } // namespace openmsx
 
