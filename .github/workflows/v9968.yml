@@ -119,6 +119,6 @@ jobs:
         # remove anything that is not one of our packages (older runs
         # attached the build action's own artifacts too)
         gh release view "$TAG" --json assets -q '.assets[].name' | \
-          grep -v '^openMSX-' | while read -r A; do
+          { grep -v '^openMSX-' || true; } | while read -r A; do
             gh release delete-asset "$TAG" "$A" -y
           done
