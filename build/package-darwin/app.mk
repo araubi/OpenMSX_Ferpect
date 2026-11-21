@@ -91,7 +91,8 @@ $(DESTDIR)/$(APP_ICON): $(DESTDIR)/$(APP_RES)/%: $(APP_SUPPORT_DIR)/% bindistcle
 
 codesign: app
 	@if [ -z "$(CODE_SIGN_IDENTITY)" ]; then \
-		echo "  Skipping code sign, CODE_SIGN_IDENTITY not set."; \
+		echo "  CODE_SIGN_IDENTITY not set: ad-hoc signing the application bundle."; \
+		codesign --deep --force --verify --verbose --sign - $(DESTDIR)/$(APP_DIR); \
 	else \
 		echo "  Signing the application bundle..."; \
 		codesign --deep --force --verify --verbose --options runtime --sign "$(CODE_SIGN_IDENTITY)" $(DESTDIR)/$(APP_DIR); \

@@ -91,7 +91,7 @@ Los dos avisos están **desactivados por defecto** y no cambian la emulación. P
 En [Releases](../../releases) están los paquetes (desde la v0.22j):
 - **Windows** de 64 bits (`windows-x86_64.zip`): se descomprime y se ejecuta `openmsx.exe`.
 - **Linux** de 64 bits (`linux-x86_64.zip`): se descomprime y se ejecuta `bin/openmsx`.
-- **macOS** (`mac-arm64.dmg` para Apple Silicon, `mac-x86_64.dmg` para Intel): no va firmado, así que la primera vez hay que abrirlo con clic derecho → Abrir (o quitarle la cuarentena con `xattr -dr com.apple.quarantine openMSX.app`).
+- **macOS** (`mac-arm64.dmg` para Apple Silicon, `mac-x86_64.dmg` para Intel): desde la v0.22l la aplicación va firmada «ad hoc» (sin certificado de Apple). Ya no sale «está dañado», pero la primera vez macOS avisa de que no puede comprobarla: en macOS 15 o posterior, Ajustes del Sistema → Privacidad y seguridad → «Abrir igualmente»; en versiones anteriores, clic derecho → Abrir. También vale quitarle la cuarentena en Terminal con `xattr -cr /Applications/openMSX.app`. Quitar el aviso del todo exige una cuenta de desarrollador de Apple (99 $ al año) para firmar y notarizar.
 
 Las ROM de sistema se ponen en `share/systemroms`, igual que en openMSX. Todo lo compila GitHub Actions (`.github/workflows/ferpect.yml`) con las mismas recetas que las versiones de prueba oficiales.
 
