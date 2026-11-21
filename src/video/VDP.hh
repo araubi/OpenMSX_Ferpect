@@ -115,9 +115,9 @@ public:
 		return (version & VM_MSX1) != 0;
 	}
 
-	/** Is this a Toshiba VDP (T6950, T7937A)? (FERPECT) */
-	[[nodiscard]] bool hasToshibaPalette() const {
-		return (version & VM_TOSHIBA_PALETTE) != 0;
+	/** FERPECT: TMS9928A/9929A (wider window in which a read of S#0 loses F). */
+	[[nodiscard]] bool hasWideFLostWindow() const {
+		return fLostWide;
 	}
 
 	/** Is this a VDP only capable of PAL?
@@ -1315,6 +1315,7 @@ private:
 	/** VDP version.
 	  */
 	VdpVersion version;
+	bool fLostWide = false; // FERPECT
 
 	/** Saturation of Pr component of TMS9XXXA output circuitry.
 	  * The output of the VDP and the circuitry between the output and the

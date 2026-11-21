@@ -92,21 +92,21 @@ static constexpr FlagLostWindow F_LOST_V9958 = { 7, 14};
 static constexpr FlagLostWindow F_LOST_V9938 = {13, 15};
 static constexpr FlagLostWindow FH_LOST      = {21,  6};
 
-/** FERPECT: a Toshiba HX-21 (TMS9928A) loses about 0.42 times as many frames
-  * as openMSX's V9938 window when polling S#0 every 39-134 T (ROM
-  * ferpect/prueba_flag): a window of about 1.9 T = 11 VDP cycles. Only the
-  * width was measured; the split before/after is the V9938 one scaled down.
-  * A Sony HB-20P (Toshiba T6950A) loses about half of that again: a window
-  * of about 1 T = 6 VDP cycles. The T7937A is assumed to be like the T6950A.
-  * (On the HB-20P the polling loop also runs about 8 % slower than on the
-  * other machines; the window is computed with the measured loop time.) */
-static constexpr FlagLostWindow F_LOST_TMS99X8 = { 5,  6};
-static constexpr FlagLostWindow F_LOST_TOSHIBA = { 3,  3};
+/** FERPECT: measured with ferpect/prueba_flag (1000 waits polling S#0 every
+  * 39-134 T): a Toshiba HX-21 (TMS9928A) loses the F flag in a window of
+  * about 1.9 T (11 VDP cycles), a Toshiba HX-10D (TMS9918A) and a Sony HB-20P
+  * (Toshiba T6950A) in about 1 T (6 VDP cycles); openMSX used the V9938
+  * window (28 cycles) for them. Only the width was measured; the split
+  * before/after is the V9938 one scaled down. The TMS9929A is assumed to be
+  * like the TMS9928A, the other MSX1 VDPs like the TMS9918A. */
+static constexpr FlagLostWindow F_LOST_TMS9928 = { 5,  6};
+static constexpr FlagLostWindow F_LOST_TMS9918 = { 3,  3};
 
 static FlagLostWindow getFLostWindow(const VDP& vdp)
 {
-	if (vdp.hasToshibaPalette()) return F_LOST_TOSHIBA;
-	if (vdp.isMSX1VDP()) return F_LOST_TMS99X8;
+	if (vdp.isMSX1VDP()) {
+		return vdp.hasWideFLostWindow() ? F_LOST_TMS9928 : F_LOST_TMS9918;
+	}
 	return vdp.hasYJK() ? F_LOST_V9958 : F_LOST_V9938;
 }
 
@@ -206,6 +206,9 @@ VDP::VDP(const DeviceConfig& config)
 	int defaultSaturation = 54;
 
 	const auto& versionString = config.getChildData("version");
+	// FERPECT: the TMS9928A/9929A lose the F flag in a wider window than the
+	// TMS9918A and the Toshiba VDPs (see getFLostWindow()).
+	fLostWide = (versionString == one_of("TMS9928A", "TMS9929A"));
 	if (versionString == "TMS99X8A") version = TMS99X8A;
 	else if (versionString == "TMS9918A") {
 		version = TMS99X8A;
