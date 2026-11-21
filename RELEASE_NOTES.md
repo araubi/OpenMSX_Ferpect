@@ -14,3 +14,4 @@ Los avisos están desactivados por defecto. Zip para Windows de 64 bits: se desc
 
 Licencia GPL v2, como openMSX. No es una versión oficial de openMSX.
 10. **macOS: al dejar pulsada una tecla ya no sale el menú de acentos** (v0.22k) encima de la ventana; la tecla se repite como en un MSX.
+11. **macOS: la aplicación va firmada «ad hoc»** (v0.22l): ya no sale «está dañado» ni hace falta `xattr`; la primera vez basta con Ajustes del Sistema → Privacidad y seguridad → «Abrir igualmente» (o clic derecho → Abrir en macOS anteriores al 15).
