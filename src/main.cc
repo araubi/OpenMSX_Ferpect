@@ -21,6 +21,10 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -87,6 +91,16 @@ static void initializeSDL()
 	// aware, which makes the window and GUI smaller there. (There's no
 	// SDL_HINT_* macro for this hint in SDL3, but SDL still reads it.)
 	SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "unaware");
+#endif
+#ifdef __APPLE__
+	// FERPECT: text input is always started (see
+	// InputEventGenerator::startTextInput()), so on macOS holding a key
+	// (e.g. 'O' in a game) popped up the accent menu ("press and hold")
+	// over the window instead of repeating the key. Turn that off for
+	// openMSX only, as SDL2 used to do.
+	CFPreferencesSetAppValue(CFSTR("ApplePressAndHoldEnabled"), kCFBooleanFalse,
+	                         kCFPreferencesCurrentApplication);
+	CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
 #endif
 	if (!SDL_Init(flags)) {
 		throw FatalError("Couldn't init SDL: ", SDL_GetError());

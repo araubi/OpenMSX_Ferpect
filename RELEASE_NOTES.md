@@ -13,3 +13,4 @@ openMSX 22.0 con estos cambios (ver [README_FERPECT.md](README_FERPECT.md)):
 Los avisos están desactivados por defecto. Zip para Windows de 64 bits: se descomprime, se ponen las ROM de sistema en `share/systemroms` y se ejecuta `openmsx.exe`.
 
 Licencia GPL v2, como openMSX. No es una versión oficial de openMSX.
+10. **macOS: al dejar pulsada una tecla ya no sale el menú de acentos** (v0.22k) encima de la ventana; la tecla se repite como en un MSX.
