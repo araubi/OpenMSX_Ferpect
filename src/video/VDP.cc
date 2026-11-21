@@ -1032,10 +1032,9 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 			// 00,01,02,.. over EE gives ..,2C,2E,EE,2F,30,.. : one byte
 			// wrong, one left unwritten, and the rest in place (openMSX
 			// used to shift all the following bytes back by one).
-			// (Not measured yet on the Texas chips: they keep the old
-			// behaviour.)
-			if ((version & VM_TOSHIBA_PALETTE) && !isRead &&
-			    !cpuVramReqIsRead) {
+			// The same test on a Toshiba HX-21 (Texas TMS9928A) shows
+			// the same pattern (see below for the second one).
+			if (!isRead && !cpuVramReqIsRead) {
 				++tmsOwedIncrements;
 			}
 			cpuVramReqIsRead = isRead;
@@ -1082,6 +1081,25 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	// drawn with OUTs 25 cycles apart, gets corrupted, while it's fine
 	// on the real machine). With 4 TMS cycles (Delta::CPU_16) openMSX
 	// gives the same threshold as the real machine.
+	// FERPECT: the Texas chips (HX-21, TMS9928A, vramtest4) also show a
+	// second pattern: one byte wrong (it holds the next byte) and
+	// everything else in place, nothing left unwritten. So a write that
+	// arrives just after the previous one went to VRAM still changes
+	// that byte (the data latch is still being used), and then is done
+	// normally at the next address.
+	if (!isRead && !(version & VM_TOSHIBA_PALETTE) && tmsLastWriteAddr >= 0) {
+		// Fitted to the HX-21 counts (bytes wrong per 1024 writes, real /
+		// openMSX): 24T 108,97 / 162,99; 25T 89,78 / 76,67; WME 69,64 /
+		// 59,58; 26T and 27T 0 / 0. 18 VDP ticks; from 20 on 27T fails.
+		constexpr uint64_t LATE_WINDOW = 18;
+		EmuTime now = VDPClock(time) + uint64_t(9);
+		if (tmsLastWriteTime <= now &&
+		    VDPClock(tmsLastWriteTime).getTicksTill(now) < LATE_WINDOW) {
+			vram->cpuWrite(tmsLastWriteAddr, cpuVramData, time);
+		}
+	}
+	tmsLastWriteAddr = -1;
+
 	cpuVramReqIsRead = isRead;
 	cpuVramReqData = cpuVramData;
 	pendingCpuAccess = true;
@@ -1263,6 +1281,10 @@ void VDP::executeCpuVramAccess(EmuTime time)
 			cpuVramData = vram->cpuRead(addr, time);
 		} else {
 			vram->cpuWrite(addr, cpuVramReqData, time);
+			if (isMSX1VDP()) {
+				tmsLastWriteTime = time;
+				tmsLastWriteAddr = addr;
+			}
 		}
 	} else {
 		if (cpuVramReqIsRead) {

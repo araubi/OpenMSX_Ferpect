@@ -1473,6 +1473,10 @@ private:
 	  * requests that overwrote a pending write (see
 	  * scheduleTMS99x8VramAccess). */
 	int tmsOwedIncrements = 0;
+	/** FERPECT: the last TMS99x8 CPU write that reached VRAM (Texas
+	  * chips only, see scheduleTMS99x8VramAccess). */
+	EmuTime tmsLastWriteTime = EmuTime::zero();
+	int tmsLastWriteAddr = -1;
 
 	/** The slot granted to the most recently accepted CPU-VRAM request, and
 	  * its class. It stays valid after that access has taken place, because

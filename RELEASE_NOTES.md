@@ -15,3 +15,4 @@ Los avisos están desactivados por defecto. Zip para Windows de 64 bits: se desc
 Licencia GPL v2, como openMSX. No es una versión oficial de openMSX.
 10. **macOS: al dejar pulsada una tecla ya no sale el menú de acentos** (v0.22k) encima de la ventana; la tecla se repite como en un MSX.
 11. **macOS: la aplicación va firmada «ad hoc»** (v0.22l): ya no sale «está dañado» ni hace falta `xattr`; la primera vez basta con Ajustes del Sistema → Privacidad y seguridad → «Abrir igualmente» (o clic derecho → Abrir en macOS anteriores al 15).
+12. **VDP de Texas (TMS9918A/9928A/9929A): escrituras demasiado rápidas como en el aparato real** (v0.22m). Medido con PruebaVRAM4 en un Toshiba HX-21 (TMS9928A): ya no se corre todo un byte. O sale un byte erróneo y otro sin escribir (como en el Toshiba T6950A), o, si la escritura llega justo después de la anterior, solo queda un byte erróneo. Las cuentas cuadran con el HX-21 y a 26 y 27 T sigue sin fallar.
