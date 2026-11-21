@@ -57,7 +57,7 @@ FERPECT espera ahora 4 ciclos de la VDP en vez de 7 antes de buscar el hueco de 
 
 **Cómo falla, y por qué cambia de un día a otro (v0.22i).** Con `ferpect/prueba_vram/vramtest4.asm`, que llena la VRAM con EEh, escribe 00, 01, 02… y enseña los bytes del primer fallo, el HB-20P da siempre lo mismo: `2B 2C 2E EE 2F 30`. Cuando una escritura llega antes de que la VDP haya hecho la anterior, la anterior se hace con el dato nuevo y la nueva no se hace, pero el puntero avanza por las dos. Queda un byte equivocado y otro sin escribir, y el resto en su sitio. openMSX, en cambio, corría todos los bytes siguientes una posición, y por eso el mapa de War in Middle Earth salía revuelto en vez de con algún punto suelto como en el aparato.
 
-Ese mismo HB-20P, otro día, perdió bytes con 24 T y 25 T (unos 40 y 9 fallos de cada 1024 escrituras; ninguno con 26 T), cuando el 19-11 no había perdido ninguno. La explicación es que la fase entre el reloj del Z80 y el ciclo de memoria de la VDP queda fija mientras el MSX está encendido y cambia en cada encendido. FERPECT elige esa fase al azar al arrancar (de 0 a 5; con la 5 da la foto del 21-11 y con 0-2 la del 19-11). Se puede fijar con `set VDP.msx1_phase N` (-1 = la del arranque). Por ahora solo en los chips Toshiba; los de Texas siguen como en la v0.22e hasta medirlos con la misma ROM.
+Ese mismo HB-20P, el 21-11 y después de apagarlo y encenderlo cuatro veces, pierde siempre parecido: con 24 T unos 40 fallos de cada 1024 escrituras, con 25 T de 5 a 12, con el patrón de War in Middle Earth de 5 a 10, y ninguno con 26 T (en el HB-20P la VDP y el Z80 tienen relojes independientes, así que su fase va girando). La prueba del 19-11, sin fallos a 24-25 T, fue la excepción. FERPECT v0.22j da esas cifras: los Toshiba ven la petición 9 ciclos de VDP después, como los de Texas (la v0.22i elegía una fase al azar al arrancar; se ha quitado). Los chips de Texas mantienen su forma de fallar hasta medirlos con la misma ROM.
 
 La regla para programar no cambia: deja al menos 29 T entre escrituras con la imagen encendida, porque no todos los MSX1 tienen por qué ser iguales que el HB-20P.
 
@@ -88,9 +88,12 @@ Los dos avisos están **desactivados por defecto** y no cambian la emulación. P
 
 ## Descarga
 
-En [Releases](../../releases) está el zip para Windows de 64 bits. Se descomprime y se ejecuta `openmsx.exe`. Las ROM de sistema se ponen en `share/systemroms`, igual que en openMSX.
+En [Releases](../../releases) están los paquetes (desde la v0.22j):
+- **Windows** de 64 bits (`windows-x86_64.zip`): se descomprime y se ejecuta `openmsx.exe`.
+- **Linux** de 64 bits (`linux-x86_64.zip`): se descomprime y se ejecuta `bin/openmsx`.
+- **macOS** (`mac-arm64.dmg` para Apple Silicon, `mac-x86_64.dmg` para Intel): no va firmado, así que la primera vez hay que abrirlo con clic derecho → Abrir (o quitarle la cuarentena con `xattr -dr com.apple.quarantine openMSX.app`).
 
-El zip lo compila GitHub Actions (`.github/workflows/ferpect.yml`) con MinGW-w64, igual que las versiones de prueba oficiales.
+Las ROM de sistema se ponen en `share/systemroms`, igual que en openMSX. Todo lo compila GitHub Actions (`.github/workflows/ferpect.yml`) con las mismas recetas que las versiones de prueba oficiales.
 
 ## Licencia y créditos
 

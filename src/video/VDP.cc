@@ -18,7 +18,6 @@ TODO:
 */
 
 #include "VDP.hh"
-#include "random.hh"
 
 #include "Display.hh"
 #include "RenderSettings.hh"
@@ -191,14 +190,6 @@ VDP::VDP(const DeviceConfig& config)
 		"VDP command is in progress",
 		"",
 		Setting::Save::YES)
-	, msx1PhaseSetting(
-		getCommandController(),
-		getName() + ".msx1_phase",
-		"Toshiba MSX1 VDPs only: phase 0..5 between the Z80 clock and the "
-		"VDP memory cycle, which decides whether VRAM writes 24 or 25 "
-		"cycles apart get lost; -1 = the one picked at random at power on",
-		-1, -1, 5, Setting::Save::NO)
-	, msx1Phase(random_int(0, 5))
 	, cpu(getCPU()) // used frequently, so cache it
 	, fixedVDPIOdelayCycles(getDelayCycles(getMotherBoard().getMachineConfig()->getConfig().getChild("devices")))
 {
@@ -1100,21 +1091,16 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	// gives losses up to N=25 (and a few at N=26). Toshiba chips keep the
 	// HB-20P timing.
 	//
-	// Update 4 (21-11-2026): the same HB-20P, on another day, does lose
-	// bytes at N=24 and N=25 (vramtest4.asm: about 40 and 9 failures per
-	// 1024 writes, none at N=26), so the difference between the chips was
-	// really a difference between power-ons: the phase between the Z80
-	// clock and the VDP memory cycle is fixed while the machine is on and
-	// random at power on. The request is seen 4 + phase VDP ticks after
-	// 'time' (phase 0..5): with phase 5 we get the 21-11 losses of the
-	// HB-20P, with phase 0..2 none at N=24 or N=25 (HB-20P on 19-11).
-	// Texas chips: still 9 ticks (HX-10D, HX-21), until they are measured
-	// with vramtest4.asm.
-	int phase = msx1PhaseSetting.getInt();
-	if (phase < 0) phase = msx1Phase;
-	EmuTime req = (version & VM_TOSHIBA_PALETTE)
-	            ? VDPClock(time) + uint64_t(4 + phase)
-	            : VDPClock(time) + uint64_t(9);
+	// Update 4 (21-11-2026): the same HB-20P, on other days and after
+	// several power-ons, does lose bytes at N=24 and N=25 with
+	// 'ferpect/prueba_vram/vramtest4.asm': about 40 and 8 failures per
+	// 1024 writes (5 to 12 at N=25), 5 to 10 with the 'War in Middle
+	// Earth' pattern, none at N=26. The 19-11 run (none at N=24) was the
+	// odd one out. With the request seen 9 VDP ticks after 'time', as for
+	// the Texas chips, openMSX gives those numbers. (The VDP and the Z80
+	// have separate crystals in the HB-20P, so their phase keeps turning;
+	// the deterministic slot table gives about the same spread.)
+	EmuTime req = VDPClock(time) + uint64_t(9);
 	syncCpuVramAccess.setSyncPoint(
 		getAccessSlot(req, VDPAccessSlots::Delta::CPU_16));
 }
@@ -2485,8 +2471,7 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 	}
 
 	if (ar.versionAtLeast(serVersion, 16)) {
-		ar.serialize("msx1Phase",         msx1Phase,
-		             "tmsOwedIncrements", tmsOwedIncrements);
+		ar.serialize("tmsOwedIncrements", tmsOwedIncrements);
 	}
 
 	if (ar.versionAtLeast(serVersion, 15)) {

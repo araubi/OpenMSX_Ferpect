@@ -7,7 +7,6 @@
 
 #include "Clock.hh"
 #include "EnumSetting.hh"
-#include "IntegerSetting.hh"
 #include "IRQHelper.hh"
 #include "InfoTopic.hh"
 #include "MSXDevice.hh"
@@ -1312,12 +1311,6 @@ private:
 	TclCallback tooFastCallback;
 	TclCallback dotClockDirectionCallback;
 	TclCallback regWriteDuringCmdCallback;
-
-	/** FERPECT: phase (0..5) between the Z80 clock and the Toshiba VDP memory
-	  * cycle, picked at random at power on; the setting forces one
-	  * (-1 = the random one). See scheduleTMS99x8VramAccess(). */
-	IntegerSetting msx1PhaseSetting;
-	int msx1Phase = 0;
 
 	/** VDP version.
 	  */
