@@ -1,6 +1,6 @@
 # openMSX con el V9968 (rama msx2pp de buppu3)
 
-Compilación sin cambios de la rama `msx2pp` de **buppu3** (https://github.com/buppu3/openMSX, commit `aea339b`, 4-10-2026), que añade al openMSX el **V9968**, la VDP prevista para el MSX2++. Todo el mérito es de buppu3. No lleva las mejoras de openMSX FERPECT.
+Compilación de la rama `msx2pp` de **buppu3** (https://github.com/buppu3/openMSX, commit `aea339b`, 4-10-2026), que añade al openMSX el **V9968**, la VDP prevista para el MSX2++. Todo el mérito es de buppu3; solo se ha añadido la receta de compilación (y en macOS más pasos de constexpr para clang). No lleva las mejoras de openMSX FERPECT.
 
 Cómo usarlo (según su README):
 - Máquina de ejemplo: `Panasonic_FS-A1ST_V9968` (un turbo R con V9968).

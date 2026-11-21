@@ -44,3 +44,7 @@ LINK_FLAGS+= \
 	-framework CoreFoundation -framework CoreServices \
 	-framework ApplicationServices -framework CoreMIDI \
 	-framework Foundation
+
+# V9968 build: the access slot tables (VDP clock x4) need more constexpr
+# evaluation steps than clang allows by default.
+COMPILE_FLAGS+=-fconstexpr-steps=100000000
