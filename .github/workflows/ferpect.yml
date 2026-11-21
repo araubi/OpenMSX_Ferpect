@@ -27,7 +27,7 @@ jobs:
             cpu: x86_64
             os: mingw-w64
             plat: windows-x86_64
-          - image: ubuntu-latest
+          - image: ubuntu-24.04
             name: Linux x86_64
             cpu: x86_64
             os: linux
