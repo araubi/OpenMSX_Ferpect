@@ -84,6 +84,12 @@ Si un programa espera el cuadro leyendo S#0 en bucle y la lectura cae justo cuan
 
 **Regla:** no esperar el cuadro leyendo S#0 en bucle; usar la interrupción y una marca en RAM.
 
+### 8. Yamanooto: el registro BFFEh como en un SCC+ real (v0.22n)
+
+En el SCC+ de Konami (SCC-I), el registro de modo (BFFEh) puede poner bancos en «RAM»: el bit 4 los pone todos, y los bits 0, 1 y 2+5 los bancos 0, 1 y 2. Un banco en RAM no cambia aunque se escriba en su registro. openMSX ya lo emula en el cartucho SCC+, pero en el Yamanooto solo miraba el bit 5 (registros del SCC+), así que allí todo funcionaba.
+
+El SD Snatcher en castellano para Yamanooto escribe 3Fh en BFFEh después de cada acceso al SCC+. En un FS-A1ST real con Yamanooto se queda sin música, sin la imagen de Moscú y colgado en el prólogo («Los misteriosos bioroides…»). En openMSX 22 iba bien. FERPECT respeta ahora esos bits en el Yamanooto y falla igual que el aparato. Con un parche de un byte en la ROM (3Fh → 20h) funciona en FERPECT; falta probarlo en el aparato.
+
 Los dos avisos están **desactivados por defecto** y no cambian la emulación. Para quitarlos, basta con dejar el ajuste vacío (`set too_fast_opll_access_callback ""`).
 
 ## Descarga

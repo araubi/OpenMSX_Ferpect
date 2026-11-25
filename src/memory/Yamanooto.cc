@@ -260,8 +260,18 @@ void Yamanooto::writeMem(uint16_t address, byte value, EmuTime time)
 				scc.writeMem(narrow_cast<uint8_t>(address & 0xFF), value, time);
 			}
 
+			// FERPECT: like the Konami SCC-I (SCC+), a bank in RAM mode
+			// (SCC mode register bit 4: all banks, bits 0/1: bank 0/1,
+			// bits 2+5: bank 2) ignores bank switch writes. This matches
+			// a real Yamanooto in a Panasonic FS-A1ST, where the
+			// Spanish SD Snatcher (it writes 3Fh to BFFEh) crashes.
+			bool ramBank = (sccMode & 0x10) ||
+				((page8kB == 0) && (sccMode & 0x01)) ||
+				((page8kB == 1) && (sccMode & 0x02)) ||
+				((page8kB == 2) && ((sccMode & 0x24) == 0x24));
+
 			// Konami-SCC
-			if (((address & 0x1800) == 0x1000) && ((configReg & MDIS) == 0)) {
+			if (!ramBank && ((address & 0x1800) == 0x1000) && ((configReg & MDIS) == 0)) {
 				// [0x5000,0x57FF] [0x7000,0x77FF]
 				// [0x9000,0x97FF] [0xB000,0xB7FF]
 				bankRegs[page8kB] = (value + offset) & 0x3FF;
