@@ -1,0 +1,54 @@
+MEMINI 1.0 - Volcado de la RAM al encender
+==========================================
+
+Sirve para medir con que contenido arranca la RAM de un MSX real y poner
+ese mismo contenido en openMSX FERPECT (<initialContent> de la maquina).
+
+Que hace
+--------
+MEMINI.COM (MSX-DOS 1, MSX-DOS 2 o Nextor) escribe en el disco:
+
+  MEMINI.BIN   toda la RAM que usa el DOS: los 64 KB, o todos los
+               segmentos del mapper si lo hay (256 KB en el HB-F900).
+  MEMSLOT.BIN  lectura del resto de slots, sin escribir nunca en ellos.
+               Hace falta cuando el DOS arranca con la RAM de un cartucho
+               y la RAM interna queda en otro slot. Se salta las paginas
+               de las ROM de disco. Con "MEMINI N" no se hace.
+
+El programa no modifica la RAM que mide, salvo lo que ocupa el mismo
+(0100h-07FFh), su pila y un buffer de 4 KB que guarda antes de usarlo.
+
+Como medir
+----------
+1. Maquina apagada varios minutos (mejor 10 o mas): la RAM dinamica
+   conserva la carga un buen rato y un apagado corto no vale.
+2. Encender con el disco de DOS que lleva MEMINI.COM y ejecutar MEMINI.
+   Lo ideal es un AUTOEXEC.BAT con la linea MEMINI, para tocar lo minimo.
+3. Renombrar los archivos antes de la siguiente medida, por ejemplo
+   REN MEMINI.BIN F900_1.BIN  y  REN MEMSLOT.BIN F900_1S.BIN
+4. Repetir 4 o 5 veces por maquina, siempre desde frio. Si se puede, una
+   medida extra tras un apagado de solo 2 o 3 segundos, con otro nombre.
+
+Tamano: 66 KB en un MSX de 64 KB y unos 262 KB con mapper de 256 KB, mas
+MEMSLOT.BIN (de 30 a 100 KB normalmente).
+
+Analisis en el PC
+-----------------
+  python analiza_memini.py F900_1.BIN F900_2.BIN --slots F900_1S.BIN --xml
+
+Da la cabecera (slots, DOS, mapper), el periodo que mejor explica la RAM,
+las zonas que no siguen el patron, lo que cambia entre arranques y el
+<initialContent> propuesto. Con --ram salida.bin guarda la RAM en crudo.
+
+Limites
+-------
+- La zona de trabajo de la BIOS (F380h-FFFFh), la pila y lo que usa el
+  DOS (parte alta de la pagina 3 y el principio de la pagina 0) ya estan
+  escritas cuando el programa arranca. El analizador las aparta.
+- Un cartucho con menu o microcontrolador puede usar o sustituir la RAM.
+  En el HB-F900 lo mejor es arrancar el DOS desde su propia disquetera.
+- openMSX solo sabe repetir un patron fijo; la parte aleatoria de cada
+  encendido se mide aqui pero hoy no se puede reproducir.
+
+Formato de los archivos: en la cabecera de MEMINI.ASM.
+Ensamblar: pasmo MEMINI.ASM MEMINI.COM
