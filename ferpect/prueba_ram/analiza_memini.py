@@ -24,18 +24,37 @@ def lee(nombre):
     h = dict(a8=d[8], ff=d[9], exp=d[10:14], ram=d[14:18], drv=d[18:26],
              tpa=d[26] | d[27] << 8, sp=d[28] | d[29] << 8, ver=d[30],
              dosa=d[31], dosb=d[32], segs=d[33] | d[34] << 8)
-    p, trozos = 64, []
+    p, trozos, rep = 64, [], 0
+    def cab(q):
+        return (q == len(d) or (q + 8 <= len(d) and d[q] == 0x43 and d[q+1] <= 2
+                and d[q+4] <= 3 and d[q+5:q+8] == b"\0\0\0"))
     while p < len(d):
-        if d[p] != 0x43:
+        if not cab(p):
             sys.exit(f"{nombre}: trozo mal formado en {p}")
         tipo, seg, hi, marca = d[p+1:p+5]
         p += 8
         datos = None
         if marca == 0:
-            datos = d[p:p+4096]; p += 4096
-            if len(datos) != 4096:
-                sys.exit(f"{nombre}: archivo cortado")
+            if cab(p + 4096):
+                datos = d[p:p+4096]; p += 4096
+            else:
+                # Copia en modo texto: cada CR LF se quedo en LF. Se busca la
+                # cabecera siguiente y se reponen los CR que faltan.
+                for falta in range(1, 400):
+                    if cab(p + 4096 - falta):
+                        break
+                else:
+                    sys.exit(f"{nombre}: archivo cortado o danado en {p}")
+                b = bytearray(d[p:p+4096-falta]); p += 4096 - falta
+                lf = [i for i, v in enumerate(b) if v == 10 and (i == 0 or b[i-1] != 13)]
+                for i in reversed(lf[:falta]):
+                    b.insert(i, 13)
+                b += bytes(4096 - len(b))
+                datos = bytes(b[:4096]); rep += 1
         trozos.append((tipo, seg, hi, marca, datos))
+    if rep:
+        print(f"AVISO {nombre}: copiado en modo texto (CR LF -> LF); {rep} trozos reparados a ojo."
+              " Los trozos sin CR LF (la RAM limpia) no se ven afectados.")
     return h, trozos
 
 def imagen(h, trozos):

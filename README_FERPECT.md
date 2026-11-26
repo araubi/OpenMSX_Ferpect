@@ -172,6 +172,10 @@ En **Bestial Warrior** son las rayitas de otro color que aparecen en la pared al
 
 Esta versión arregla también la carga de estados guardados de versiones anteriores a la v0.22r.
 
+### 14. Sony HB-20P: contenido de la RAM al encender (v0.22t)
+
+`ferpect/prueba_ram/MEMINI.COM` vuelca a disco la RAM tal como la deja el encendido (la del DOS y, sin escribir en ellos, el resto de slots). En un HB-20P real, en frío: **128 bytes a 00h y 128 a FFh**, repetido, sin ninguna desviación de 0000h a BFFFh (la página 3 ya la ha usado la BIOS). FERPECT arranca ahora así; antes toda a FFh. Los programas que leen memoria sin inicializar se comportan como en el aparato.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):
