@@ -2,6 +2,7 @@
 
 #include "DummyAY8910Periphery.hh"
 #include "MSXCPUInterface.hh"
+#include "MSXException.hh"
 
 #include "narrow.hh"
 #include "outer.hh"
@@ -14,17 +15,34 @@
 // TODO:
 // * HOME/DEL boot keys.  How are these handled?
 // * SCC stereo mode.
+//
+// FERPECT (26-11-2026): brought up to date with the "Yamanooto Hardware
+// Reference" of 5-dec-2025:
+// * CFGR bit 2 is now ASCII (ASCII8, or ASCII16 together with K4); the old
+//   ROMDIS function is gone (the hidden bit is cleared by the firmware).
+// * Writing OFFR clears the SUBOFF bits.
+// * ENAR bit 5 (LOFF): the offset counts in 2MB steps, for flash chips of
+//   more than 8MB. ENAR bit 2 (MSTEN) gives access to MOFFR (master offset,
+//   write only) and ENAR bit 1 (SPIEN) to SPICON, both at 7FFEh.
+// * SPI: SDAT (7FFCh) talks to the SD card when SPICON selects it.
+// * The flash chip follows the size of the ROM image (or <flash> in the
+//   config): 8MB S29GL064N, or 16/32/64/128MB S29GL128P/256P/512P/01GP.
+// Not known (assumed here): the master offset uses the same step as OFFR,
+// and writes to 7FFCh-7FFFh don't reach the ASCII mapper.
 
 namespace openmsx {
 
 static constexpr uint16_t ENAR = 0x7FFF;
 static constexpr uint8_t  REGEN  = 0x01;
+static constexpr uint8_t  SPIEN  = 0x02;
+static constexpr uint8_t  MSTEN  = 0x04;
+static constexpr uint8_t  LOFF   = 0x20;
 static constexpr uint8_t  WREN   = 0x10;
 static constexpr uint16_t OFFR = 0x7FFE;
 static constexpr uint16_t CFGR = 0x7FFD;
 static constexpr uint8_t  MDIS   = 0x01;
 static constexpr uint8_t  ECHO   = 0x02;
-static constexpr uint8_t  ROMDIS = 0x04;
+static constexpr uint8_t  ASCII  = 0x04; // was ROMDIS
 static constexpr uint8_t  K4     = 0x08;
 static constexpr uint8_t  SUBOFF = 0x30;
 // undocumented stuff
@@ -32,13 +50,27 @@ static constexpr uint8_t  FPGA_EN   = 0x40; // write: 1 -> enable communication 
 static constexpr uint8_t  FPGA_WAIT = 0x80; // read: ready signal ??? (1 = ready)
 static constexpr uint16_t FPGA_REG  = 0x7FFC; // bi-direction 8-bit communication channel
 
+[[nodiscard]] static const AmdFlash::ValidatedChip& getFlashChip(
+	const DeviceConfig& config, const Rom& rom)
+{
+	auto name = config.getChildData("flash", "");
+	auto size = rom.size();
+	if (name == "S29GL01GP" || (name.empty() && size > 0x4000000)) return AmdFlashChip::S29GL01GP;
+	if (name == "S29GL512P" || (name.empty() && size > 0x2000000)) return AmdFlashChip::S29GL512P;
+	if (name == "S29GL256P" || (name.empty() && size > 0x1000000)) return AmdFlashChip::S29GL256P;
+	if (name == "S29GL128P" || (name.empty() && size > 0x0800000)) return AmdFlashChip::S29GL128P;
+	if (name.empty() || name == "S29GL064N") return AmdFlashChip::S29GL064N90TFI04;
+	throw MSXException("Yamanooto: unknown flash chip: ", name);
+}
+
 Yamanooto::Yamanooto(DeviceConfig& config, Rom&& rom_)
 	: MSXRom(config, std::move(rom_))
 	, romBlockDebug(*this)
-	, flash(rom, AmdFlashChip::S29GL064N90TFI04, {}, config)
+	, flash(rom, getFlashChip(config, rom), {}, config)
 	, scc(getName() + " SCC", config, getCurrentTime(), SCC::Mode::Compatible)
 	, psg(getName() + " PSG", DummyAY8910Periphery::instance(), config,
 	      getCurrentTime(), AY8910::Type::AY8910)
+	, sdCard(DeviceConfig(config, config.findChild("sdcard")))
 {
 	// Tests show that the PSG has higher volume than the scc. See
 	//   https://www.msx.org/forum/msx-talk/openmsx/openmsx-cartridge-type?page=2#comment-470014
@@ -76,6 +108,9 @@ void Yamanooto::reset(EmuTime time)
 	offsetReg = 0;
 	writeConfigReg(0);
 	fpgaFsm = 0;
+	masterOffsetReg = 0;
+	spiCon = 0;
+	sdat = 0xFF;
 
 	ranges::iota(bankRegs, uint16_t(0));
 	ranges::iota(rawBanks, uint8_t(0));
@@ -104,7 +139,7 @@ void Yamanooto::writeConfigReg(byte value)
 
 bool Yamanooto::isSCCAccess(uint16_t address) const
 {
-	if (configReg & K4) return false; // Konami4 doesn't have SCC
+	if (configReg & (K4 | ASCII)) return false; // only Konami5 has the SCC
 
 	// This uses the raw bank registers (not adjusted with offset register),
 	//   see: https://github.com/openMSX/openMSX/issues/1992
@@ -121,8 +156,29 @@ unsigned Yamanooto::getFlashAddr(unsigned addr) const
 {
 	unsigned page8kB = (addr >> 13) - 2;
 	assert(page8kB < 4); // must be inside [0x4000, 0xBFFF]
-	auto bank = bankRegs[page8kB] & 0x3ff; // max 8MB
+	unsigned bank = bankRegs[page8kB] & ((flash.size() >> 13) - 1); // 8MB: 0x3FF
 	return (bank << 13) | (addr & 0x1FFF);
+}
+
+unsigned Yamanooto::getOffset() const
+{
+	unsigned off = unsigned(offsetReg) + masterOffsetReg;
+	return (enableReg & LOFF) ? (off << 8) // 2MB steps
+	                          : ((off << 2) | ((configReg & SUBOFF) >> 4));
+}
+
+bool Yamanooto::spiSelected() const
+{
+	// chip select: SPICON bit 4, or the deprecated bit 6 of CFGR
+	return (spiCon & 0x10) || (configReg & FPGA_EN);
+}
+
+void Yamanooto::setBank(unsigned page8kB, unsigned value, byte raw)
+{
+	bankRegs[page8kB] = narrow_cast<uint16_t>(value);
+	rawBanks[page8kB] = raw;
+	invalidateDeviceRCache(0x4000 + 0x2000 * page8kB, 0x2000);
+	invalidateDeviceRCache((0x4000 + 0x2000 * page8kB) ^ 0x8000, 0x2000); // mirror
 }
 
 [[nodiscard]] static uint16_t mirror(uint16_t address)
@@ -147,11 +203,17 @@ byte Yamanooto::peekMem(uint16_t address, EmuTime time) const
 	if (FPGA_REG <= address && address <= ENAR && (enableReg & REGEN)) {
 		switch (address) {
 		case FPGA_REG:
-			if (!(configReg & FPGA_EN)) return 0xFF; // TODO check this
+			if (!spiSelected()) return 0xFF; // TODO check this
+			if (spiCon & 0x01) return sdat; // SD card
 			assert(fpgaFsm < 5);
 			return FPGA_ID[fpgaFsm];
 		case CFGR: return configReg | FPGA_WAIT; // not-busy
-		case OFFR: return offsetReg;
+		case OFFR:
+			if (enableReg & SPIEN) {
+				// SPICON: RDY (always), CD, CS and SPI mode
+				return byte(0x80 | (sdCard.isPresent() ? 0x40 : 0x00) | (spiCon & 0x13));
+			}
+			return offsetReg; // also with MSTEN: MOFFR is write only
 		case ENAR: return enableReg;
 		default: UNREACHABLE;
 		}
@@ -161,8 +223,7 @@ byte Yamanooto::peekMem(uint16_t address, EmuTime time) const
 	if (isSCCAccess(address)) {
 		return scc.peekMem(narrow_cast<uint8_t>(address & 0xFF), time);
 	}
-	return ((configReg & ROMDIS) == 0) ? flash.peek(getFlashAddr(address), time)
-	                                   : 0xFF; // access to flash ROM disabled
+	return flash.peek(getFlashAddr(address), time);
 }
 
 byte Yamanooto::readMem(uint16_t address, EmuTime time)
@@ -177,8 +238,7 @@ byte Yamanooto::readMem(uint16_t address, EmuTime time)
 	if (isSCCAccess(address)) {
 		return scc.readMem(narrow_cast<uint8_t>(address & 0xFF), time);
 	}
-	return ((configReg & ROMDIS) == 0) ? flash.read(getFlashAddr(address), time)
-	                                   : 0xFF; // access to flash ROM disabled
+	return flash.read(getFlashAddr(address), time);
 }
 
 const byte* Yamanooto::getReadCacheLine(uint16_t address) const
@@ -188,8 +248,7 @@ const byte* Yamanooto::getReadCacheLine(uint16_t address) const
 	}
 	address = mirror(address);
 	if (isSCCAccess(address)) return nullptr;
-	return ((configReg & ROMDIS) == 0) ? flash.getReadCacheLine(getFlashAddr(address))
-	                                   : unmappedRead.data(); // access to flash ROM disabled
+	return flash.getReadCacheLine(getFlashAddr(address));
 }
 
 void Yamanooto::writeMem(uint16_t address, byte value, EmuTime time)
@@ -201,7 +260,11 @@ void Yamanooto::writeMem(uint16_t address, byte value, EmuTime time)
 		} else if (enableReg & REGEN) {
 			switch (address) {
 			case FPGA_REG:
-				if (!(configReg & FPGA_EN)) break;
+				if (!spiSelected()) break;
+				if (spiCon & 0x01) { // SD card (01: fast, 11: slow)
+					sdat = sdCard.transfer(value, false);
+					break;
+				}
 				switch (fpgaFsm) {
 				case 0:
 					if (value == 0x9f) { // read ID command ??
@@ -222,7 +285,18 @@ void Yamanooto::writeMem(uint16_t address, byte value, EmuTime time)
 				writeConfigReg(value);
 				break;
 			case OFFR:
-				offsetReg = value; // does NOT immediately switch bankRegs
+				if (enableReg & SPIEN) {
+					if ((spiCon & 0x10) && !(value & 0x10) && (spiCon & 0x01)) {
+						// CS released: tell the card
+						sdCard.transfer(0xFF, true);
+					}
+					spiCon = value & 0x13;
+				} else if (enableReg & MSTEN) {
+					masterOffsetReg = value;
+				} else {
+					offsetReg = value; // does NOT immediately switch bankRegs
+					configReg &= ~SUBOFF; // writing OFFR clears SUBOFF
+				}
 				break;
 			default:
 				UNREACHABLE;
@@ -230,27 +304,43 @@ void Yamanooto::writeMem(uint16_t address, byte value, EmuTime time)
 		}
 		invalidateDeviceRCache();
 	}
+	bool isReg = (FPGA_REG <= address) && (address <= ENAR); // before mirroring
 	address = mirror(address);
 	unsigned page8kB = (address >> 13) - 2;
 
 	if (enableReg & WREN) {
 		// write to flash rom
-		if (!(configReg & ROMDIS)) { // disabled?
-			flash.write(getFlashAddr(address), value, time);
-			invalidateDeviceRCache(); // needed ?
-		}
+		flash.write(getFlashAddr(address), value, time);
+		invalidateDeviceRCache(); // needed ?
 	} else {
 		auto invalidateCache = [&](unsigned start, unsigned size) {
 			invalidateDeviceRCache(start, size);
 			invalidateDeviceRCache(start ^ 0x8000, size); // mirror
 		};
-		auto offset = (offsetReg << 2) | ((configReg & SUBOFF) >> 4);
-		if (configReg & K4) {
+		auto offset = getOffset();
+		if (configReg & ASCII) {
+			if (((configReg & MDIS) == 0) && !isReg &&
+			    (0x6000 <= address) && (address < 0x8000)) {
+				if (configReg & K4) {
+					// ASCII16: 6000h-67FFh -> 4000h-7FFFh,
+					//          7000h-77FFh -> 8000h-BFFFh
+					if ((address & 0x0800) == 0) {
+						unsigned region = (address & 0x1000) ? 2 : 0;
+						unsigned b = ((2u * value) + offset) & 0xFFFF;
+						setBank(region + 0, b,     value);
+						setBank(region + 1, b + 1, value);
+					}
+				} else {
+					// ASCII8: 6000h, 6800h, 7000h, 7800h
+					setBank((address >> 11) & 3, (value + offset) & 0xFFFF, value);
+				}
+			}
+		} else if (configReg & K4) {
 			// Konami-4
 			if (((configReg & MDIS) == 0) && (0x6000 <= address)) {
 				// bank 0 is NOT switchable, but it keeps the
 				// value it had before activating K4 mode
-				bankRegs[page8kB] = (value + offset) & 0x3FF;
+				bankRegs[page8kB] = (value + offset) & 0xFFFF;
 				rawBanks[page8kB] = value;
 				invalidateCache(0x4000 + 0x2000 * page8kB, 0x2000);
 			}
@@ -274,7 +364,7 @@ void Yamanooto::writeMem(uint16_t address, byte value, EmuTime time)
 			if (!ramBank && ((address & 0x1800) == 0x1000) && ((configReg & MDIS) == 0)) {
 				// [0x5000,0x57FF] [0x7000,0x77FF]
 				// [0x9000,0x97FF] [0xB000,0xB7FF]
-				bankRegs[page8kB] = (value + offset) & 0x3FF;
+				bankRegs[page8kB] = (value + offset) & 0xFFFF;
 				rawBanks[page8kB] = value;
 				invalidateCache(0x4000 + 0x2000 * page8kB, 0x2000);
 			}
@@ -341,6 +431,12 @@ void Yamanooto::serialize(Archive& ar, unsigned version)
 		for (auto [b, r] : std::views::zip(bankRegs, rawBanks)) {
 			r = uint8_t(b - offset);
 		}
+	}
+	if (ar.versionAtLeast(version, 3)) {
+		ar.serialize("masterOffsetReg", masterOffsetReg,
+		             "spiCon", spiCon,
+		             "sdat", sdat,
+		             "sdCard", sdCard);
 	}
 }
 INSTANTIATE_SERIALIZE_METHODS(Yamanooto);

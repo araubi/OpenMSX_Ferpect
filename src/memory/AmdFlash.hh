@@ -631,6 +631,50 @@ namespace AmdFlashChip
 		},
 		.misc{.statusCommand = true, .continuityCommand = true, .readyPin = true},
 	}};
+
+	// FERPECT: Infineon / Cypress / Spansion S29GL-P family (uniform 128 kB
+	// sectors, 64-byte write buffer), from the S29GL01GP/512P/256P/128P
+	// datasheet (002-00886 Rev. *B). These are the larger chips a Yamanooto
+	// can carry. Not validated on real hardware.
+#define FERPECT_S29GL_P(NAME, ID, SECTORS, CHIP_ERASE) \
+	static constexpr ValidatedChip NAME = {{ \
+		.autoSelect{.manufacturer = AMD, .device{ID, 0x01}, .extraCode = 0xFF19, .readMask = 0x0F}, \
+		.geometry{DeviceInterface::x8x16, {{.count = SECTORS, .size = 0x20000}}, -1}, \
+		.erase{.suspend = true, .duration = EmuDuration::msec(500), .suspendDuration = EmuDuration::usec(20)}, \
+		.program{ \
+			.suspend = true, .bufferPageSize = 64, \
+			.duration = EmuDuration::usec(60), .additionalDuration = EmuDuration::usec(7.5), .suspendDuration = EmuDuration::usec(15) \
+		}, \
+		.cfi{ \
+			.command = true, \
+			.systemInterface{ \
+				.supply = {.minVcc = 0x27, .maxVcc = 0x36, .minVpp = 0x00, .maxVpp = 0x00}, \
+				.typTimeout     = {.singleProgram = 64, .multiProgram = 64, .sectorErase = 512, .chipErase = CHIP_ERASE}, \
+				.maxTimeoutMult = {.singleProgram =  8, .multiProgram = 32, .sectorErase =   8, .chipErase = 4}, \
+			}, \
+			.primaryAlgorithm{ \
+				.version = {.major = 1, .minor = 3}, \
+				.addressSensitiveUnlock = 0, \
+				.siliconRevision = 5, \
+				.eraseSuspend = 2, \
+				.sectorProtect = 1, \
+				.sectorTemporaryUnprotect = 0, \
+				.sectorProtectScheme = 8, \
+				.simultaneousOperation = 0, \
+				.burstMode = 0, \
+				.pageMode = 2, \
+				.supply = {.minAcc = 0xB5, .maxAcc = 0xC5}, \
+				.bootBlockFlag = 0x05, \
+				.programSuspend = 1, \
+			}, \
+		}, \
+		.misc{.readyPin = true}, \
+	}}
+	FERPECT_S29GL_P(S29GL128P, 0x21,  128,  65536);
+	FERPECT_S29GL_P(S29GL256P, 0x22,  256, 131072);
+	FERPECT_S29GL_P(S29GL512P, 0x23,  512, 262144);
+	FERPECT_S29GL_P(S29GL01GP, 0x28, 1024, 524288);
+#undef FERPECT_S29GL_P
 }
 
 } // namespace openmsx

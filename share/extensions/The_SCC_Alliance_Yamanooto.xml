@@ -6,7 +6,7 @@
     <manufacturer>The SCC Alliance</manufacturer>
     <code/>
     <release_year>2023</release_year>
-    <description>MSX Flash cartridge of 8MB with SCC and PSG.</description>
+    <description>MSX Flash cartridge with SCC and PSG (8MB, or 16-128MB following the ROM size) and SD card.</description>
     <type>Flash cartridge</type>
   </info>
   <devices>

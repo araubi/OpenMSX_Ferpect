@@ -131,6 +131,19 @@ FERPECT usa esa tabla para los Toshiba, esas dos reglas y, en el HB-20P, la rela
 
 A 26 T o más no se pierde nada en ninguno de los dos; a 25 T FERPECT pierde algo menos que el aparato. Las dos rutinas de Bestial Warrior no se usaron para ajustar: sirven de comprobación. Queda sin modelar que, a ritmos rápidos, 1 de cada 10 pérdidas del aparato deja además un byte sin escribir. La posición de los huecos dentro de la línea no se puede medir así (solo sus distancias); se ha tomado la de los Texas.
 
+### 11. Yamanooto: lo que faltaba de su referencia de hardware (v0.22q)
+
+openMSX emula el Yamanooto de 2023-2024. Con la «Yamanooto Hardware Reference» del 5-12-2025 y la lista de chips de su autor, FERPECT añade:
+
+- **ASCII8 y ASCII16**: bit 2 de CFGR (7FFDh), solo o junto con K4. Ese bit era antes ROMDIS, que ya no existe.
+- **OFFR** (7FFEh): al escribirlo se borran los dos bits SUBOFF de CFGR.
+- **LOFF** (bit 5 de ENAR): el desplazamiento cuenta en pasos de 2 MB, para chips de más de 8 MB.
+- **MSTEN / MOFFR** (bit 2 de ENAR): desplazamiento maestro, de solo escritura, que se suma al normal.
+- **SD por SPI** (bit 1 de ENAR): SPICON en 7FFEh (listo, tarjeta presente, CS y destino) y SDAT en 7FFCh. La imagen de la tarjeta se inserta con `hda`.
+- **Flash según el tamaño de la ROM**: hasta 8 MB el S29GL064N; para 16, 32, 64 y 128 MB los S29GL128P, 256P, 512P y 01GP (sectores de 128 KB, identificación 01h 7Eh 21h/22h/23h/28h 01h). También se puede fijar con `<flash>` en la configuración.
+
+Dos cosas no vienen en la referencia y están supuestas: que el desplazamiento maestro usa el mismo paso que OFFR, y que escribir en 7FFCh-7FFFh no cambia bancos en los modos ASCII. Probado con una imagen de 32 MB (cada modo y cada desplazamiento) y con los primeros comandos de una SD; falta software real que lo use.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):

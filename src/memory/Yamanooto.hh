@@ -6,6 +6,7 @@
 #include "MSXRom.hh"
 #include "RomBlockDebuggable.hh"
 #include "SCC.hh"
+#include "SdCard.hh"
 
 #include <array>
 
@@ -36,6 +37,9 @@ private:
 	void writeConfigReg(byte value);
 	[[nodiscard]] bool isSCCAccess(uint16_t addr) const;
 	[[nodiscard]] unsigned getFlashAddr(unsigned addr) const;
+	[[nodiscard]] unsigned getOffset() const;
+	[[nodiscard]] bool spiSelected() const;
+	void setBank(unsigned page8kB, unsigned value, byte raw);
 
 private:
 	struct Blocks final : RomBlockDebuggableBase {
@@ -47,7 +51,8 @@ private:
 	AmdFlash flash;
 	SCC scc;
 	AY8910 psg;
-	std::array<uint16_t, 4> bankRegs = {}; // need 10 bits per entry (not 8)
+	SdCard sdCard;
+	std::array<uint16_t, 4> bankRegs = {}; // 8kB page in the flash (up to 16 bits with LOFF)
 	std::array<uint8_t, 4> rawBanks = {}; // not adjusted with offset
 	byte enableReg = 0;
 	byte offsetReg = 0;
@@ -55,8 +60,11 @@ private:
 	byte sccMode = 0;
 	byte psgLatch = 0;
 	byte fpgaFsm = 0; // hack, just enough to read ID
+	byte masterOffsetReg = 0; // FERPECT: MOFFR
+	byte spiCon = 0;          // FERPECT: SPICON
+	byte sdat = 0xFF;         // FERPECT: last byte received over SPI
 };
-SERIALIZE_CLASS_VERSION(Yamanooto, 2);
+SERIALIZE_CLASS_VERSION(Yamanooto, 3);
 
 } // namespace openmsx
 
