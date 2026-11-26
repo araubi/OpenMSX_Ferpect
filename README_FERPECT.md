@@ -156,6 +156,22 @@ Qué no es igual que en su versión: buppu3 cuadruplica el reloj del VDP y tiene
 
 Comprobado que no cambia nada de lo anterior: la prueba `VRAMMED5` del HB-20P y una prueba de comandos en el HB-F900 dan byte a byte lo mismo que en v0.22q.
 
+### 13. MSX1 Toshiba (T6950A): direcciones saltadas a ritmos rápidos (v0.22s)
+
+Con escrituras cada 17-21 T el HB-20P deja, además de bytes perdidos, alguna dirección **sin escribir**; hasta la v0.22r FERPECT no dejaba ninguna. Del volcado de `VRAMMED5` salen dos reglas:
+
+- Si la escritura que pisa a la que estaba esperando llega **menos de 2 T antes del hueco**, el chip la vuelve a ver después del acceso y hace un acceso «vacío» (solo avanza el puntero) en el hueco siguiente, salvo que antes llegue otra escritura. Con huecos cada 20,6 T siempre llega antes, así que solo se nota al final de la línea, donde hay dos huecos a 8,9 T.
+- Si la escritura llega **menos de 0,8 T después** de un acceso que se hizo esperar casi un hueco entero (19,8 T o más), el puntero avanza una vez de más: una dirección saltada y ningún dato perdido.
+
+| Por pasada de 1024 (HB-20P / FERPECT) | 17 T | 18 T | 19 T | 20 T | 21 T | Rutina del juego |
+|---|---|---|---|---|---|---|
+| Perdido + sin escribir | 13 / 14 | 12 / 10 | 7 / 7 | 4 / 2 | 8 / 1 | 8 / 4 |
+| Solo saltada | 0 / 0 | 0 / 0 | 1 / 0 | 5 / 7 | 14 / 14 | 7 / 5 |
+
+En **Bestial Warrior** son las rayitas de otro color que aparecen en la pared al entrar en cada pantalla, cada vez en un sitio (ahí queda el color de la pantalla anterior). Queda corto a 20-21 T en el primer tipo y se pasa un poco a 22-24 T.
+
+Esta versión arregla también la carga de estados guardados de versiones anteriores a la v0.22r.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):

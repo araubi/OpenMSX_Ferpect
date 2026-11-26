@@ -1712,6 +1712,11 @@ private:
 	/** FERPECT: the waiting TMS99x8 write only advances the pointer
 	  * (Toshiba chips, see scheduleTMS99x8VramAccess). */
 	bool tmsPhantom = false;
+	/** FERPECT: the T6950A will see the last write request again after
+	  * its access (see scheduleTMS99x8VramAccess). */
+	bool tmsAgain = false;
+	/** FERPECT: the waiting 'empty' access belongs to no write. */
+	bool tmsPhantomOnly = false;
 	/** FERPECT: the last TMS99x8 CPU write that reached VRAM (Texas
 	  * chips only, see scheduleTMS99x8VramAccess). */
 	EmuTime tmsLastWriteTime = EmuTime::zero();
@@ -1776,7 +1781,7 @@ private:
 	bool lockExtReg;
 	bool compatibleMemoryTiming;	// Use V9968 timing only in HS mode;
 };
-SERIALIZE_CLASS_VERSION(VDP, 19);
+SERIALIZE_CLASS_VERSION(VDP, 20);
 
 } // namespace openmsx
 

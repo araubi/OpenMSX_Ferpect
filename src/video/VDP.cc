@@ -546,6 +546,8 @@ void VDP::reset(EmuTime time)
 	pendingCpuAccess = false;
 	tmsOwedIncrements = 0;
 	tmsPhantom = false;
+	tmsAgain = false;
+	tmsPhantomOnly = false;
 	previousCpuSlot = EmuTime::zero();
 	previousCpuSlotIsLate = false;
 	secondCpuSlot = EmuTime::infinity();
@@ -720,7 +722,23 @@ void VDP::execSetSprites(EmuTime time)
 void VDP::execCpuVramAccess(EmuTime time)
 {
 	pendingCpuAccess = false;
+	tmsPhantomOnly = false;
 	executeCpuVramAccess(time);
+	if (tmsAgain) [[unlikely]] {
+		// FERPECT: T6950A, request seen twice: an 'empty' access at the
+		// next slot (only the pointer advances) unless a new write
+		// arrives first.
+		tmsAgain = false;
+		if (secondCpuSlot == EmuTime::infinity()) {
+			tmsPhantom = true;
+			tmsPhantomOnly = true;
+			cpuVramReqIsRead = false;
+			pendingCpuAccess = true;
+			syncCpuVramAccess.setSyncPoint(getAccessSlot(
+				VDPClock(time) + uint64_t(1), VDPAccessSlots::Delta::D0));
+			return;
+		}
+	}
 	if (secondCpuSlot != EmuTime::infinity()) [[unlikely]] {
 		// A request accepted just before this access now gets its turn.
 		cpuVramReqIsRead = secondCpuVramReqIsRead;
@@ -1227,13 +1245,43 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 					// byte is lost and what follows is shifted, nothing is
 					// left unwritten. (A waiting 'empty' access, see below,
 					// becomes a normal write.)
+					if (tmsPhantomOnly) {
+						// An 'empty' access left over from a request
+						// seen twice (see below): the new write simply
+						// takes it, nothing is lost.
+						tmsPhantomOnly = false;
+						tmsPhantom = false;
+						tmsAgain = false;
+						tmsLastReqTime = time;
+						cpuVramReqIsRead = isRead;
+						cpuVramReqData = cpuVramData;
+						return;
+					}
 					tmsPhantom = false;
+					// The write that replaces a waiting one very shortly
+					// before its slot is seen again after it: the VDP does
+					// one more access at the next slot.
+					// FERPECT (26-11-2026, v0.22s): with the slots 20.6
+					// Z80 cycles apart the next write always comes first,
+					// so this only shows near the end of the line, where
+					// two slots are 8.9 cycles apart: one byte lost and one
+					// left unwritten ('A'), a few times every two lines.
+					// That is what leaves stray old colours in the walls
+					// of Bestial Warrior. 'A' per 1024 writes, HB-20P /
+					// model: 17T 13/14, 18T 12/11, 19T 7/7, 20T 4/2.
+					constexpr unsigned AGAIN_WINDOW = 12; // 2 Z80 cycles
+					auto left = VDPClock(time).getTicksTill(
+						*syncCpuVramAccess.isPending());
+					tmsAgain = left < AGAIN_WINDOW;
 				} else {
 					++tmsOwedIncrements;
 					tmsLastReqTime = time;
 				}
 			} else {
 				tmsLastReqTime = time;
+				tmsPhantom = false;
+				tmsPhantomOnly = false;
+				tmsAgain = false;
 			}
 			cpuVramReqIsRead = isRead;
 			cpuVramReqData = cpuVramData;
@@ -1325,6 +1373,21 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 				if (w < WAIT_EMPTY) return; // nothing else happens
 				tmsPhantom = true;
 			}
+		}
+	}
+	if (!isRead && (version & VM_TOSHIBA_PALETTE) && !allowTooFastAccess &&
+	    tmsLastWriteTime <= time && tmsLastReqTime <= tmsLastWriteTime) {
+		// FERPECT (26-11-2026, v0.22s), HB-20P, VRAMMED5: a write that
+		// arrives less than 0.8 Z80 cycles after the access of a write
+		// that had waited (almost) a whole slot period makes the pointer
+		// advance once more: one address is skipped and nothing is lost
+		// (..,50,EE,51,..). Skipped addresses per 1024 writes, HB-20P /
+		// model: 19T 1/0, 20T 5/7, 21T 14/14, 22T 5/4, 23T 2/6.
+		constexpr unsigned SKIP_WINDOW = 5, SKIP_WAIT = 119;
+		auto u = VDPClock(tmsLastWriteTime).getTicksTill(time);
+		auto w = VDPClock(tmsLastReqTime).getTicksTill(tmsLastWriteTime);
+		if (u < SKIP_WINDOW && w >= SKIP_WAIT) {
+			vramPointer = (vramPointer + 1) & 0x3FFF;
 		}
 	}
 	tmsLastWriteAddr = -1;
@@ -2792,9 +2855,16 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 	             "horizontalAdjust",     horizontalAdjust,
 	             "registers",            controlRegs,
 	             "blinkCount",           blinkCount,
-	             "vramPointer",          vramPointer,
-	             "palette",              palette,
-	             "isDisplayArea",        isDisplayArea,
+	             "vramPointer",          vramPointer);
+	if (ar.versionAtLeast(serVersion, 19)) {
+		ar.serialize("palette", palette);
+	} else {
+		// before the V9968 the palette had 16 entries
+		std::array<uint16_t, 16> pal16;
+		ar.serialize("palette", pal16);
+		for (auto i : xrange(256)) palette[i] = pal16[i & 15];
+	}
+	ar.serialize("isDisplayArea",        isDisplayArea,
 	             "palTiming",            palTiming,
 	             "interlaced",           interlaced,
 	             "statusReg0",           statusReg0,
@@ -2880,6 +2950,10 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 		             "commandEndIntr", commandEndIntr,
 		             "spsTopPlane",    spsTopPlane,
 		             "lockExtReg",     lockExtReg);
+	}
+	if (ar.versionAtLeast(serVersion, 20)) {
+		ar.serialize("tmsAgain",       tmsAgain,
+		             "tmsPhantomOnly", tmsPhantomOnly);
 	}
 
 	if (ar.versionAtLeast(serVersion, 15)) {
