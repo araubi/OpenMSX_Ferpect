@@ -5,6 +5,11 @@ name: FERPECT build and release
 # GitHub Release yet, it creates that Release and attaches all the packages;
 # if it exists, it uploads them again.
 
+# Both macOS packages are built on the Intel image (macos-15-intel): since
+# 25-11-2026 GitHub does not hand out its Apple Silicon runners to this
+# repository (jobs are cancelled after 15 minutes in the queue), and the Intel
+# one cross-compiles the arm64 package fine.
+
 on:
   push:
     branches:
@@ -32,13 +37,13 @@ jobs:
             cpu: x86_64
             os: linux
             plat: linux-x86_64
-          - image: macos-15
+          - image: macos-15-intel
             xcode_version: 16.4
             name: macOS Intel
             cpu: x86_64
             os: darwin
             plat: mac-x86_64
-          - image: macos-15
+          - image: macos-15-intel
             xcode_version: 16.4
             name: macOS Apple Silicon
             cpu: aarch64
