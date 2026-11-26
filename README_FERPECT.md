@@ -106,6 +106,31 @@ El cambio: en los chips Toshiba, si una escritura llega menos de 128 a 140 ciclo
 
 **Regla:** la de siempre, 29 T o más entre escrituras a la VRAM con la imagen encendida. Y para medir tiempos en un MSX real, calibrar antes contra el VDP y no fiarse de cartuchos que sirven la memoria con un microcontrolador.
 
+### 10. MSX1 Toshiba (T6950A): los huecos de acceso del chip, sacados del volcado (v0.22p)
+
+`ferpect/prueba_vram/VRAMMED5.ASM` hace 1024 escrituras seguidas a 17, 18, ... 24 T (y con las dos rutinas rápidas de Bestial Warrior), empezando en 8 puntos del cuadro, y guarda en un CSV lo que se lee después. `tipos5.py` y `resumen5.py` lo resumen. Con el volcado de un Sony HB-20P:
+
+- Las pérdidas no dependen del calor ni del azar: se repiten cada 20,84 ciclos del Z80 y, a mayor escala, cada 229,23, que es lo que dura una línea del VDP en ese aparato (64 µs; openMSX supone 228). El Z80 y el VDP llevan cristales distintos.
+- En las líneas con imagen (SCREEN 2) el chip atiende al Z80 en 12 momentos por línea: 9 seguidos cada 20,6 T y 3 más a 8,9, 18,5 y 11,9 T; hasta el primero de la línea siguiente pasan 25,4 T. En el borde de arriba y de abajo y en el retrazado no se pierde nada ni a 17 T.
+- Un byte se pierde de dos maneras. Si la escritura siguiente llega antes del hueco, sustituye a la que esperaba y todo lo que sigue queda corrido una posición. Si llega de 2,1 a 4,5 T después de un hueco que se hizo esperar 16,3 T o más, cambia el byte recién escrito; y si la espera pasó de 19,2 T queda además una dirección sin escribir.
+
+FERPECT usa esa tabla para los Toshiba, esas dos reglas y, en el HB-20P, la relación de relojes medida (`z80_freq_for_vdp_line` en la configuración de la máquina). Bytes perdidos por pasada de 1024 dentro de la imagen, corridos + con byte sin escribir, aparato / FERPECT:
+
+| Ritmo | HB-20P | FERPECT v0.22p |
+|---|---|---|
+| 17 T | 156 + 12 | 167 + 0 |
+| 18 T | 120 + 12 | 124 + 0 |
+| 19 T | 111 + 8 | 107 + 0 |
+| 20 T | 84 + 3 | 87 + 0 |
+| 21 T | 85 + 10 | 80 + 0 |
+| 22 T | 53 + 29 | 54 + 26 |
+| 23 T | 36 + 57 | 41 + 45 |
+| 24 T | 2 + 38 | 19 + 33 |
+| Carga de Bestial Warrior | 90 + 6 | 76 + 0 |
+| Juego de Bestial Warrior | 76 + 12 | 73 + 0 |
+
+A 26 T o más no se pierde nada en ninguno de los dos; a 25 T FERPECT pierde algo menos que el aparato. Las dos rutinas de Bestial Warrior no se usaron para ajustar: sirven de comprobación. Queda sin modelar que, a ritmos rápidos, 1 de cada 10 pérdidas del aparato deja además un byte sin escribir. La posición de los huecos dentro de la línea no se puede medir así (solo sus distancias); se ha tomado la de los Texas.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):

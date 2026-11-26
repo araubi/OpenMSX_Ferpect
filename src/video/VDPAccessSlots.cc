@@ -114,6 +114,20 @@ static constexpr std::array<int16_t, 19 + 8> slotsMsx1Gfx12 = {
 	1368+124, 1368+132, 1368+140,
 };
 
+// FERPECT: Toshiba T6950A, graphic mode 1 and 2, measured on a Sony HB-20P
+// with 'ferpect/prueba_vram/VRAMMED5.ASM' (26-11-2026). The lost writes
+// repeat with the line: 9 slots 20.6 Z80 cycles apart, then 3 more after
+// 8.9, 18.5 and 11.9 cycles, and 25.4 cycles until the first one of the next
+// line. Unlike the Texas chips there are no extra slots in the border. Only
+// the distances were measured: the position of the first slot in the line
+// is taken from the Texas table. (That line lasts 229.23 Z80 cycles in the
+// HB-20P, 64 us; here it is scaled to the 228 of openMSX.)
+static constexpr std::array<int16_t, 12 + 4> slotsToshibaGfx12 = {
+	  69,  220,  343,  466,  588,  711,  834,  957, 1080, 1203,
+	1256, 1366,
+	1368+ 69, 1368+220, 1368+343, 1368+466,
+};
+
 // MSX1 graphic mode 3 (aka screen 3).
 static constexpr std::array<int16_t, 51 + 8> slotsMsx1Gfx3 = {
 	   4,   12,   20,   28,  116,  124,  132,  140,  220,  228,
@@ -316,6 +330,7 @@ static constexpr CycleTable tabChar         {false, slotsChar,        Timing{.la
 static constexpr CycleTable tabText         {false, slotsText};
 static constexpr CycleTable tabScreenOff    {false, slotsScreenOff,  Timing{.pad = {{{1334, 2}, {1344, 2}}}, .extra = 0}};
 static constexpr CycleTable tabMsx1Gfx12    {true,  slotsMsx1Gfx12};
+static constexpr CycleTable tabToshibaGfx12 {true,  slotsToshibaGfx12};
 static constexpr CycleTable tabMsx1Gfx3     {true,  slotsMsx1Gfx3};
 static constexpr CycleTable tabMsx1Text     {true,  slotsMsx1Text};
 static constexpr CycleTable tabMsx1ScreenOff{true,  slotsMsx1ScreenOff};
@@ -338,7 +353,8 @@ static constexpr AccessTable tabBroken{};
 		if (!enabled) return tabMsx1ScreenOff;
 		return text ? tabMsx1Text
 		            : (gfx3 ? tabMsx1Gfx3
-		                    : tabMsx1Gfx12);
+		                    : (vdp.isToshibaVDP() ? tabToshibaGfx12
+		                                          : tabMsx1Gfx12));
 		// TODO undocumented modes
 	} else {
 		if (bitmap) {

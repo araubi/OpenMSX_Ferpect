@@ -111,6 +111,11 @@ public:
 	  * @return True if this is an MSX1 VDP
 	  *   False otherwise.
 	  */
+	/** FERPECT: is this a Toshiba MSX1 VDP (T6950, T7937A)? */
+	[[nodiscard]] bool isToshibaVDP() const {
+		return (version & VM_TOSHIBA_PALETTE) != 0;
+	}
+
 	[[nodiscard]] bool isMSX1VDP() const {
 		return (version & VM_MSX1) != 0;
 	}
@@ -1476,6 +1481,9 @@ private:
 	/** FERPECT: time of the last TMS99x8 CPU VRAM request (Toshiba chips,
 	  * see scheduleTMS99x8VramAccess). */
 	EmuTime tmsLastReqTime = EmuTime::zero();
+	/** FERPECT: the waiting TMS99x8 write only advances the pointer
+	  * (Toshiba chips, see scheduleTMS99x8VramAccess). */
+	bool tmsPhantom = false;
 	/** FERPECT: the last TMS99x8 CPU write that reached VRAM (Texas
 	  * chips only, see scheduleTMS99x8VramAccess). */
 	EmuTime tmsLastWriteTime = EmuTime::zero();
@@ -1536,7 +1544,7 @@ private:
 	MSXCPU& cpu;
 	const uint8_t fixedVDPIOdelayCycles;
 };
-SERIALIZE_CLASS_VERSION(VDP, 17);
+SERIALIZE_CLASS_VERSION(VDP, 18);
 
 } // namespace openmsx
 

@@ -193,6 +193,13 @@ VDP::VDP(const DeviceConfig& config)
 	, cpu(getCPU()) // used frequently, so cache it
 	, fixedVDPIOdelayCycles(getDelayCycles(getMotherBoard().getMachineConfig()->getConfig().getChild("devices")))
 {
+	// FERPECT: in some machines the Z80 and the VDP have separate crystals.
+	// openMSX derives everything from one clock, so such a machine gives
+	// here the Z80 frequency that keeps the measured number of Z80 cycles
+	// per VDP line (Sony HB-20P: 229.23 instead of 228, VRAMMED5).
+	if (int f = config.getChildDataAsInt("z80_freq_for_vdp_line", 0); f > 0) {
+		cpu.setZ80Freq(narrow<unsigned>(f));
+	}
 	// Current general defaults for saturation:
 	// - Any MSX with a TMS9x18 VDP: SatPr=SatPb=100%
 	// - Other machines with a TMS9x2x VDP and RGB output:
@@ -431,6 +438,7 @@ void VDP::reset(EmuTime time)
 	syncCmdDone      .removeSyncPoint();
 	pendingCpuAccess = false;
 	tmsOwedIncrements = 0;
+	tmsPhantom = false;
 	previousCpuSlot = EmuTime::zero();
 	previousCpuSlotIsLate = false;
 	secondCpuSlot = EmuTime::infinity();
@@ -1037,30 +1045,21 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 			if (!isRead && !cpuVramReqIsRead) {
 				if (version & VM_TOSHIBA_PALETTE) {
 					// FERPECT (26-11-2026), Sony HB-20P (T6950A), measured
-					// with 'ferpect/prueba_vram/VRAMMED4.ASM' (routines in
-					// the internal RAM, their real period measured against
-					// the VDP itself): with writes 23.8 Z80 cycles apart
-					// or more only the pattern above is seen. Closer
-					// together the new write is simply lost (data and
-					// pointer increment, so what follows is shifted):
-					// always at 20.8 cycles or less, about 3 out of 4 at
-					// 21.8 and 1 out of 5 at 22.8. The Z80 and the VDP
-					// have separate crystals in that machine, so their
-					// phase keeps turning; here the limit (128..140 VDP
-					// ticks since the previous write) follows the position
-					// in the frame, to stay deterministic.
-					// Failures per 16 runs of 1024 writes, HB-20P / here:
-					//   22T: a 121, shifted 385 / 153, 423
-					//   23T: a 533, shifted 144 / 517, 91
-					//   24T: a 339 / 383    25T: a 68 / 86    26T: 0 / 0
-					auto gap = VDPClock(tmsLastReqTime).getTicksTill(time);
-					auto limit = 128 + (unsigned(getTicksThisFrame(time)) % 13);
-					if (gap >= limit) ++tmsOwedIncrements;
+					// with 'ferpect/prueba_vram/VRAMMED5.ASM' (it saves what
+					// is really read back after 1024 writes N cycles apart):
+					// a write that arrives while the previous one is still
+					// waiting for its slot simply replaces it. The previous
+					// byte is lost and what follows is shifted, nothing is
+					// left unwritten. (A waiting 'empty' access, see below,
+					// becomes a normal write.)
+					tmsPhantom = false;
 				} else {
 					++tmsOwedIncrements;
+					tmsLastReqTime = time;
 				}
+			} else {
+				tmsLastReqTime = time;
 			}
-			tmsLastReqTime = time;
 			cpuVramReqIsRead = isRead;
 			cpuVramReqData = cpuVramData;
 			return;
@@ -1122,6 +1121,37 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 			vram->cpuWrite(tmsLastWriteAddr, cpuVramData, time);
 		}
 	}
+	if (!isRead && (version & VM_TOSHIBA_PALETTE) && tmsLastWriteAddr >= 0 &&
+	    !allowTooFastAccess) {
+		// FERPECT (26-11-2026), HB-20P (T6950A), VRAMMED5: the second way
+		// of losing a byte. When a write had to wait almost a whole slot
+		// period (16.3 Z80 cycles or more) and the next write arrives 2.1
+		// to 4.5 cycles after that slot, the byte just written is replaced
+		// by the new one. If the wait was shorter than 19.2 cycles that is
+		// all (what follows is shifted); if it was longer the VDP also does
+		// an 'empty' access for the new write at the next slot: the pointer
+		// advances but nothing is stored (..,2C,2E,EE,2F,..).
+		// Lost bytes per 1024 writes inside the display, shifted + with a
+		// byte left unwritten, HB-20P / model:
+		//   17T 157+13 / 165+0   18T 121+12 / 120+0   19T 112+7 / 106+0
+		//   20T  84+4  /  87+0   21T  80+9  /  81+0   22T  53+27 / 49+30
+		//   23T  35+57 /  35+52  24T   1+38 /   5+42  25T   0+10 / 1+11
+		//   26T and slower: none.
+		constexpr unsigned LATE_FROM = 12, LATE_TO = 26;
+		constexpr unsigned WAIT_MIN = 99, WAIT_EMPTY = 116, WAIT_MAX = 129;
+		EmuTime now = VDPClock(time) + uint64_t(0);
+		if (tmsLastWriteTime <= now && tmsLastReqTime <= tmsLastWriteTime) {
+			auto u = VDPClock(tmsLastWriteTime).getTicksTill(now);
+			auto w = VDPClock(tmsLastReqTime).getTicksTill(tmsLastWriteTime);
+			if (u >= LATE_FROM && u < LATE_TO && w >= WAIT_MIN && w <= WAIT_MAX) {
+				tooFastCallback.execute();
+				vram->cpuWrite(tmsLastWriteAddr, cpuVramData, time);
+				tmsLastWriteAddr = -1;
+				if (w < WAIT_EMPTY) return; // nothing else happens
+				tmsPhantom = true;
+			}
+		}
+	}
 	tmsLastWriteAddr = -1;
 
 	tmsLastReqTime = time;
@@ -1143,6 +1173,16 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	// the Texas chips, openMSX gives those numbers. (The VDP and the Z80
 	// have separate crystals in the HB-20P, so their phase keeps turning;
 	// the deterministic slot table gives about the same spread.)
+	//
+	// Update 5 (26-11-2026): the dumps of VRAMMED5 show where the T6950A
+	// really has its slots (see slotsToshibaGfx12 in VDPAccessSlots.cc);
+	// with that table the request is served by the first slot from 'time'.
+	if (version & VM_TOSHIBA_PALETTE) {
+		EmuTime req = VDPClock(time) + uint64_t(0);
+		syncCpuVramAccess.setSyncPoint(
+			getAccessSlot(req, VDPAccessSlots::Delta::D0));
+		return;
+	}
 	EmuTime req = VDPClock(time) + uint64_t(9);
 	syncCpuVramAccess.setSyncPoint(
 		getAccessSlot(req, VDPAccessSlots::Delta::CPU_16));
@@ -1305,10 +1345,17 @@ void VDP::executeCpuVramAccess(EmuTime time)
 		if (cpuVramReqIsRead) {
 			cpuVramData = vram->cpuRead(addr, time);
 		} else {
-			vram->cpuWrite(addr, cpuVramReqData, time);
-			if (isMSX1VDP()) {
-				tmsLastWriteTime = time;
-				tmsLastWriteAddr = addr;
+			if (tmsPhantom) [[unlikely]] {
+				// FERPECT: 'empty' access of the T6950A, only the
+				// pointer advances (see scheduleTMS99x8VramAccess).
+				tmsPhantom = false;
+				tmsLastWriteAddr = -1;
+			} else {
+				vram->cpuWrite(addr, cpuVramReqData, time);
+				if (isMSX1VDP()) {
+					tmsLastWriteTime = time;
+					tmsLastWriteAddr = addr;
+				}
 			}
 		}
 	} else {
@@ -2522,6 +2569,9 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 	}
 	if (ar.versionAtLeast(serVersion, 17)) {
 		ar.serialize("tmsLastReqTime", tmsLastReqTime);
+	}
+	if (ar.versionAtLeast(serVersion, 18)) {
+		ar.serialize("tmsPhantom", tmsPhantom);
 	}
 
 	if (ar.versionAtLeast(serVersion, 15)) {

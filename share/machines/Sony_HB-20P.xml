@@ -29,6 +29,10 @@
 
     <VDP id="VDP">
       <version>T6950PAL</version>
+      <!-- FERPECT: measured with VRAMMED5 (26-11-2026): one VDP line lasts
+           229.23 Z80 cycles in this machine (separate crystals), not 228.
+           3579545 * 229.2323 / 228 -->
+      <z80_freq_for_vdp_line>3598900</z80_freq_for_vdp_line>
       <io base="0x98" num="2"/>
     </VDP>
 
