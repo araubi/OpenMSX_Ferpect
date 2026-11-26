@@ -56,3 +56,11 @@ Limites
 
 Formato de los archivos: en la cabecera de MEMINI.ASM.
 Ensamblar: pasmo MEMINI.ASM MEMINI.COM
+
+VRAMINI 1.0 - Volcado de la VRAM
+================================
+VRAMINI.COM escribe VRAMINI.BIN con la VRAM tal como esta al ejecutarlo:
+16 KB en MSX1 y 128 KB en MSX2 o superior, tras una cabecera de 32 bytes.
+Solo lee. Sirve para ver que queda del encendido en las zonas que la BIOS
+y el DOS no escriben. Como MEMINI: en frio, lo primero tras arrancar, y
+copia binaria al PC.
