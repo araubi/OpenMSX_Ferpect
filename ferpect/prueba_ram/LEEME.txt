@@ -29,6 +29,10 @@ Como medir
 4. Repetir 4 o 5 veces por maquina, siempre desde frio. Si se puede, una
    medida extra tras un apagado de solo 2 o 3 segundos, con otro nombre.
 
+OJO al pasar los archivos al PC: tiene que ser una copia BINARIA. Si el
+programa de transferencia los trata como texto cambia CR LF por LF y el
+archivo queda mas corto (el analizador lo avisa y lo arregla a ojo).
+
 Tamano: 66 KB en un MSX de 64 KB y unos 262 KB con mapper de 256 KB, mas
 MEMSLOT.BIN (de 30 a 100 KB normalmente).
 
