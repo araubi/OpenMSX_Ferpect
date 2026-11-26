@@ -68,7 +68,8 @@
         <mem base="0x0000" size="0x10000"/>
         <!-- FERPECT: measured with MEMINI.COM (26-11-2026) on a real HB-20P,
              cold boot: 128 bytes 00h, 128 bytes FFh, without a single
-             deviation from 0000h to BFFFh -->
+             deviation from 0000h to BFFFh. The RAM is two Fujitsu MB81464-12
+             (64K x 4 DRAM), IC10 and IC11. -->
         <initialContent encoding="gz-base64">eNpjYBhY8H+AAQAioH+B</initialContent>
       </RAM>
     </primary>
