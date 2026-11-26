@@ -1,0 +1,37 @@
+name: Prueba de imagenes de macOS
+
+# Temporary: finds out which macOS runner image GitHub does hand out.
+on:
+  push:
+    branches:
+      - prueba-mac
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: macos-14,       name: "arm64 en macos-14",        cpu: aarch64 }
+          - { image: macos-26,       name: "arm64 en macos-26",        cpu: aarch64 }
+          - { image: macos-15-intel, name: "x86_64 en macos-15-intel", cpu: x86_64 }
+          - { image: macos-14,       name: "x86_64 en macos-14",       cpu: x86_64 }
+    steps:
+    - name: Get current code from Git repo
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Xcode in use
+      run: xcodebuild -version; ls /Applications | grep -i xcode
+    - name: Build
+      uses: ./.github/actions/build
+      with:
+        os: darwin
+        cpu: ${{ matrix.cpu }}
+        flavour: opt
