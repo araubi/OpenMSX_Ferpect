@@ -548,6 +548,8 @@ void VDP::reset(EmuTime time)
 	tmsPhantom = false;
 	tmsAgain = false;
 	tmsPhantomOnly = false;
+	tmsSkipOwed = false;
+	tmsSkipFromOwed = false;
 	previousCpuSlot = EmuTime::zero();
 	previousCpuSlotIsLate = false;
 	secondCpuSlot = EmuTime::infinity();
@@ -722,14 +724,22 @@ void VDP::execSetSprites(EmuTime time)
 void VDP::execCpuVramAccess(EmuTime time)
 {
 	pendingCpuAccess = false;
+	bool wasPhantomOnly = tmsPhantomOnly;
 	tmsPhantomOnly = false;
 	executeCpuVramAccess(time);
-	if (tmsAgain) [[unlikely]] {
+	if (wasPhantomOnly && tmsSkipFromOwed) {
+		tmsSkipFromOwed = false;
+		tmsSkipOwed = false;
+	}
+	if (tmsAgain || tmsSkipOwed) [[unlikely]] {
 		// FERPECT: T6950A, request seen twice: an 'empty' access at the
 		// next slot (only the pointer advances) unless a new write
-		// arrives first.
+		// arrives first. An owed skip (see scheduleTMS99x8VramAccess)
+		// is not cancelled by that write: it waits for a free slot.
+		bool again = tmsAgain;
 		tmsAgain = false;
 		if (secondCpuSlot == EmuTime::infinity()) {
+			tmsSkipFromOwed = !again;
 			tmsPhantom = true;
 			tmsPhantomOnly = true;
 			cpuVramReqIsRead = false;
@@ -1222,6 +1232,16 @@ void VDP::scheduleCpuVramAccess(bool isRead, uint8_t write, EmuTime time)
 
 void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 {
+	if (pendingCpuAccess && tmsPhantomOnly && tmsSkipFromOwed) [[unlikely]] {
+		// FERPECT: an owed skip (see below) was waiting for this slot, but
+		// a real request comes first: the skip stays owed and this
+		// request is handled as any other.
+		syncCpuVramAccess.removeSyncPoint();
+		pendingCpuAccess = false;
+		tmsPhantomOnly = false;
+		tmsPhantom = false;
+		tmsSkipFromOwed = false;
+	}
 	if (pendingCpuAccess) [[unlikely]] {
 		if (!allowTooFastAccess) {
 			// The old request has been overwritten by the new request!
@@ -1387,7 +1407,15 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 		auto u = VDPClock(tmsLastWriteTime).getTicksTill(time);
 		auto w = VDPClock(tmsLastReqTime).getTicksTill(tmsLastWriteTime);
 		if (u < SKIP_WINDOW && w >= SKIP_WAIT) {
-			vramPointer = (vramPointer + 1) & 0x3FFF;
+			// FERPECT (27-11-2026, v0.22u): the skip is not done at
+			// once but at the first slot left free by the writes. In
+			// a continuous run that is a few writes later; in bursts
+			// of 8 writes (Bestial Warrior loader, Obliterator) it is
+			// after the burst. Skipped addresses after write 1..8 of
+			// the burst, 16 passes of BWL, HB-20P / model:
+			//   0,0,3,2,5,4,7,32 / 0,0,0,2,2,5,8,45
+			// (it used to be 4,4,5,12,19,12,6,0).
+			tmsSkipOwed = true;
 		}
 	}
 	tmsLastWriteAddr = -1;
@@ -2954,6 +2982,10 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 	if (ar.versionAtLeast(serVersion, 20)) {
 		ar.serialize("tmsAgain",       tmsAgain,
 		             "tmsPhantomOnly", tmsPhantomOnly);
+	}
+	if (ar.versionAtLeast(serVersion, 21)) {
+		ar.serialize("tmsSkipOwed",     tmsSkipOwed,
+		             "tmsSkipFromOwed", tmsSkipFromOwed);
 	}
 
 	if (ar.versionAtLeast(serVersion, 15)) {

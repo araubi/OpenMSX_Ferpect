@@ -1717,6 +1717,8 @@ private:
 	bool tmsAgain = false;
 	/** FERPECT: the waiting 'empty' access belongs to no write. */
 	bool tmsPhantomOnly = false;
+	bool tmsSkipOwed = false;
+	bool tmsSkipFromOwed = false;
 	/** FERPECT: the last TMS99x8 CPU write that reached VRAM (Texas
 	  * chips only, see scheduleTMS99x8VramAccess). */
 	EmuTime tmsLastWriteTime = EmuTime::zero();
@@ -1781,7 +1783,7 @@ private:
 	bool lockExtReg;
 	bool compatibleMemoryTiming;	// Use V9968 timing only in HS mode;
 };
-SERIALIZE_CLASS_VERSION(VDP, 20);
+SERIALIZE_CLASS_VERSION(VDP, 21);
 
 } // namespace openmsx
 

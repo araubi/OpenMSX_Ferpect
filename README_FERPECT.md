@@ -176,6 +176,10 @@ Esta versión arregla también la carga de estados guardados de versiones anteri
 
 `ferpect/prueba_ram/MEMINI.COM` vuelca a disco la RAM tal como la deja el encendido (la del DOS y, sin escribir en ellos, el resto de slots). En un HB-20P real, en frío: **128 bytes a 00h y 128 a FFh**, repetido, sin ninguna desviación de 0000h a BFFFh (la página 3 ya la ha usado la BIOS). FERPECT arranca ahora así; antes toda a FFh. Los programas que leen memoria sin inicializar se comportan como en el aparato.
 
+### 15. MSX1 Toshiba (T6950A): la dirección saltada espera a un hueco libre (v0.22u)
+
+Visto al comparar el Obliterator (ráfagas de 8 escrituras a 17 T) en el HB-20P y en FERPECT. La dirección que el chip se salta (segunda regla del apartado 13) no se salta en el momento: el acceso «vacío» se hace en el primer hueco que las escrituras dejan libre. En ráfagas eso es casi siempre al terminar la ráfaga. Direcciones saltadas tras cada una de las 8 escrituras, rutina de carga de Bestial Warrior en `VRAMMED5`, aparato / FERPECT: 0, 0, 3, 2, 5, 4, 7, 32 / 0, 0, 0, 2, 2, 5, 8, 45. Pendiente: en ráfagas el aparato pierde más la primera escritura y menos la segunda que FERPECT.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):
