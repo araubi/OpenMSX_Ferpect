@@ -380,6 +380,15 @@ EmuTime getAccessSlot(
 	return time + VDP::VDPClock::duration(tab.values[std::to_underlying(delta) + ticks]);
 }
 
+EmuTime getAccessSlot(EmuTime frame_, EmuTime time, int delay, int wait,
+                      VDPCmdCache::CachePenalty penalty, const VDP& /*vdp*/)
+{
+	VDP::VDPClock frame(frame_);
+	unsigned q0 = unsigned(frame.getTicksTill(time) % TICKS) * 4;
+	unsigned q1 = getAccessSlotQuarter(q0, delay, wait, penalty);
+	return time + VDP::VDPClock::duration((q1 - q0 + 3) / 4);
+}
+
 Calculator getCalculator(
 	EmuTime frame, EmuTime time, EmuTime limit,
 	const VDP& vdp)

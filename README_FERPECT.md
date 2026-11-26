@@ -144,6 +144,18 @@ openMSX emula el Yamanooto de 2023-2024. Con la «Yamanooto Hardware Reference»
 
 Dos cosas no vienen en la referencia y están supuestas: que el desplazamiento maestro usa el mismo paso que OFFR, y que escribir en 7FFCh-7FFFh no cambia bancos en los modos ASCII. Probado con una imagen de 32 MB (cada modo y cada desplazamiento) y con los primeros comandos de una SD; falta software real que lo use.
 
+### 12. V9968 (la VDP del MSX2++), con el código de buppu3 (v0.22r)
+
+FERPECT lleva ahora la emulación del **V9968** que **buppu3** tiene en su rama `msx2pp` de openMSX (https://github.com/buppu3/openMSX, commit `aea339b`): registros nuevos (R#20 y R#21, que hay que desbloquear escribiendo 0 en el puerto 9Ch/8Ch), VRAM de 256 KB, modo rápido de comandos (HS), comandos nuevos, 16 sprites por línea, sprites modo 3, paleta ampliada, interrupción de fin de comando y los modos de pantalla añadidos. Todo el mérito de esa emulación es suyo.
+
+- Máquina de ejemplo: `Panasonic_FS-A1ST_V9968` (un turbo R con V9968). En cualquier otra: `<version>V9968</version>` dentro de `<VDP id="VDP">`.
+- Cartucho: extensión `HRA_V9968` (puertos 88h-8Ch).
+- Al arrancar, la BIOS deja R#21 = 3Bh y el chip se comporta como un V9958.
+
+Qué no es igual que en su versión: buppu3 cuadruplica el reloj del VDP y tiene tablas de huecos propias para el V9968. FERPECT mantiene el reloj de openMSX y sus tablas medidas en aparatos reales (V9938/V9958 y los MSX1), así que la **temporización del V9968 es aproximada**: en la prueba (un programa en BASIC, tiempo en la variable TIME) con modo rápido tarda 64 en su versión y 65 en FERPECT, y sin modo rápido 275 y 290 (un 5 % más lento). El contenido de la VRAM y la imagen salen iguales en las pruebas hechas (BASIC con LINE, PAINT, COPY y sprites, con HS, 16 sprites, paleta ampliada y sprites modo 3). El depurador (visores de sprites, mapa de bits y registros) aún no conoce lo nuevo del V9968.
+
+Comprobado que no cambia nada de lo anterior: la prueba `VRAMMED5` del HB-20P y una prueba de comandos en el HB-F900 dan byte a byte lo mismo que en v0.22q.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):
@@ -157,5 +169,6 @@ Las ROM de sistema se ponen en `share/systemroms`, igual que en openMSX. Todo lo
 
 - openMSX es © el openMSX Team, con licencia **GPL v2** (`doc/GPL.txt`). Esta versión, con sus cambios, tiene la misma licencia.
 - Cambios de araubi, desarrollados con Claude (Anthropic).
+- Emulación del V9968: **buppu3** (rama `msx2pp` de https://github.com/buppu3/openMSX), adaptada aquí al reloj y a las tablas de FERPECT.
 - Datos técnicos: Grauw (MSX Assembly Page), HRA! (Takayuki Hara) y la documentación de Yamaha que ellos citan.
 - No es una versión oficial de openMSX. Los fallos de estos cambios no son responsabilidad del equipo de openMSX.

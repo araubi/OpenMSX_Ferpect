@@ -104,7 +104,7 @@ std::array<uint32_t, 16> ImGuiPalette::getPalette(const VDP* vdp) const
 			if (whichPalette == PALETTE_CUSTOM) {
 				return customPalette;
 			} else if (whichPalette == PALETTE_VDP && vdp && !vdp->isMSX1VDP()) {
-				return vdp->getPalette();
+				return vdp->getPalette().first<16>();
 			} else {
 				return fixedPalette;
 			}
@@ -146,7 +146,7 @@ void ImGuiPalette::paint(MSXMotherBoard* motherBoard)
 				return paletteCopy;
 			} else if (whichPalette == PALETTE_VDP) {
 				assert(vdp);
-				copy_to_range(vdp->getPalette(), paletteCopy);
+				copy_to_range(vdp->getPalette().first<16>(), paletteCopy);
 				return paletteCopy;
 			} else {
 				return customPalette;

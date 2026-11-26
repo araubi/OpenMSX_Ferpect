@@ -112,7 +112,7 @@ void ImGuiSpriteViewer::paint(MSXMotherBoard* motherBoard)
 		bool isMSX1 = vdp->isMSX1VDP();
 		auto displayMode = vdp->getDisplayMode();
 		bool planar = displayMode.isPlanar();
-		int vdpMode = displayMode.getSpriteMode(isMSX1);
+		int vdpMode = displayMode.getSpriteMode(isMSX1, false);
 		int vdpVerticalScroll = vdp->getVerticalScroll();
 		int vdpLines = vdp->getNumberOfLines();
 

@@ -2,6 +2,7 @@
 #define VDPACCESSSLOTS_HH
 
 #include "VDP.hh"
+#include "VDPCmdCache.hh"
 
 #include "narrow.hh"
 
@@ -62,6 +63,37 @@ static constexpr int CPU_ANY_DELTA = 4;
 static constexpr int FIRST_CMD_DELTA = 5;
 static constexpr int LAST_CMD_DELTA = NUM_DELTAS; // exclusive
 
+// --- V9968 (buppu3) high-speed command timing, FERPECT approximation ---
+// buppu3's fork runs the VDP clock 4 times faster and has its own slot tables
+// for the V9968. FERPECT keeps openMSX's clock and its measured V99x8 tables,
+// so the high-speed delays are counted here in quarter VDP cycles, with a
+// VRAM slot every 16 quarter cycles (as in the V9968 screen-off table) and
+// without the slots the display takes away. Close on average, not exact.
+static constexpr int V9968_MEMORY_ACCESS_TIME = 7;
+
+/** Advance 'q' (quarter VDP cycles) by 'delay', the cache penalty and 'wait'. */
+[[nodiscard]] constexpr unsigned getAccessSlotQuarter(
+	unsigned q, int delay, int wait, VDPCmdCache::CachePenalty penalty)
+{
+	using enum VDPCmdCache::CachePenalty;
+	auto slot = [&](int extra) { // wait for a VRAM slot, then the access
+		q += ((16 + 1 - (q & 15)) & 15) + V9968_MEMORY_ACCESS_TIME + extra;
+	};
+	q += delay;
+	switch (penalty) {
+	case CACHE_NONE: case CACHE_FLUSH_0: break;
+	case CACHE_READ_HIT: case CACHE_WRITE_HIT: case CACHE_WRITE_MISS:
+		q += 1; break;
+	case CACHE_READ_MISS:  q += 1; slot(1); break;
+	case CACHE_READ_FLUSH: q += 1; slot(1); slot(1); break;
+	case CACHE_WRITE_FLUSH: case CACHE_FLUSH_1: q += 1; slot(0); break;
+	case CACHE_FLUSH_2: q += 1; slot(0); q += 1; slot(0); break;
+	case CACHE_FLUSH_3: q += 1; slot(0); q += 1; slot(0); q += 1; slot(0); break;
+	case CACHE_FLUSH_4: q += 1; slot(0); q += 1; slot(0); q += 1; slot(0); q += 1; slot(0); break;
+	}
+	return q + wait;
+}
+
 /** VDP-VRAM access slot calculator, meant to be used in the inner loops of the
   * VDPCmdEngine commands. Code optimized for the case that:
   *  - timing remains constant (sprites/display enable/disable)
@@ -111,8 +143,22 @@ public:
 		}
 	}
 
+	/** V9968 high-speed step, see getAccessSlotQuarter(). */
+	void nextHs(int delay, int wait, VDPCmdCache::CachePenalty penalty) {
+		unsigned q = getAccessSlotQuarter(unsigned(ticks) * 4 + frac,
+		                                  delay, wait, penalty);
+		ticks = narrow_cast<int>(q >> 2);
+		frac  = narrow_cast<int>(q & 3);
+		while (ticks >= TICKS) [[unlikely]] {
+			ticks -= TICKS;
+			limit -= TICKS;
+			ref   += TICKS;
+		}
+	}
+
 private:
 	int ticks;
+	int frac = 0; // quarter cycles, only used by nextHs()
 	int limit;
 	VDP::VDPClock ref;
 	std::span<const uint8_t, NUM_DELTAS * TICKS> tab;
@@ -123,6 +169,10 @@ private:
   * reference. */
 [[nodiscard]] EmuTime getAccessSlot(EmuTime frame, EmuTime time, Delta delta,
                       const VDP& vdp);
+
+/** V9968 high-speed variant, see getAccessSlotQuarter(). */
+[[nodiscard]] EmuTime getAccessSlot(EmuTime frame, EmuTime time, int delay, int wait,
+                      VDPCmdCache::CachePenalty penalty, const VDP& vdp);
 
 /** When many calls to getAccessSlot() are needed, it's more efficient to
   * instead use this function. */
