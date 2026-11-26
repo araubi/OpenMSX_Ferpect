@@ -115,6 +115,7 @@ jobs:
         if gh release view "$TAG" > /dev/null 2>&1; then
           echo "Release $TAG already exists, uploading the packages again"
           gh release upload "$TAG" paquetes/* --clobber
+          gh release edit "$TAG" --title "`cat FERPECT_TITLE | tr -d '\r\n'`" --notes-file RELEASE_NOTES.md
         else
           gh release create "$TAG" paquetes/* \
             --target "$GITHUB_SHA" \
