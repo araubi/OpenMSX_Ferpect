@@ -92,6 +92,20 @@ El SD Snatcher en castellano para Yamanooto escribe 3Fh en BFFEh después de cad
 
 Los dos avisos están **desactivados por defecto** y no cambian la emulación. Para quitarlos, basta con dejar el ajuste vacío (`set too_fast_opll_access_callback ""`).
 
+### 9. MSX1 Toshiba (T6950A): escrituras muy seguidas, medidas con calibración (v0.22o)
+
+Las medidas anteriores del HB-20P se hacían con rutinas «de N ciclos» contados a mano. `ferpect/prueba_vram/VRAMMED3.ASM` y `VRAMMED4.ASM` (programas de MSX-DOS; la idea de hacerlo todo en un programa que escribe a fichero es de un colaborador) **miden el ritmo real de cada rutina contra el propio VDP**: cuentan las vueltas de un bucle entre dos borrados verticales, con y sin la rutina. En el emulador dan la cuenta teórica con ±0,02 T.
+
+Lo que salió:
+- Con el DOS arrancado desde una PicoVerse 2350, el programa corre desde la RAM del cartucho y cada lectura de memoria tarda más: un NOP 5,68 T, LD A,(HL) 10,5 T, OUTI 21,9 T. Las rutinas «de 20 T» eran de 25,6 T. Cualquier medida de tiempos hecha así no vale para el MSX solo.
+- Desde la RAM interna (VRAMMED4) las instrucciones tardan lo teórico, salvo un factor 0,991: en este HB-20P (PAL) el Z80 y el VDP van con cristales distintos, y la relación es justo la de las subportadoras NTSC/PAL (3,579545 / 3,546895).
+- Nada cambia en media hora encendido (55 ciclos iguales).
+- Fallos por 16 pasadas de 1024 escrituras, aparato / FERPECT v0.22o: 22 T: 121 del tipo conocido y 385 corridos / 153 y 423; 23 T: 533 y 144 / 517 y 91; 24 T: 339 / 383; 25 T: 68 / 86; 26 T o más: 0 / 0. A 21 T o menos todo queda corrido en los dos.
+
+El cambio: en los chips Toshiba, si una escritura llega menos de 128 a 140 ciclos del VDP (21,3 a 23,3 T) después de la anterior y esta sigue pendiente, la nueva se pierde entera (dato e incremento del puntero). El límite exacto depende de la posición en el cuadro, para que la emulación siga siendo determinista.
+
+**Regla:** la de siempre, 29 T o más entre escrituras a la VRAM con la imagen encendida. Y para medir tiempos en un MSX real, calibrar antes contra el VDP y no fiarse de cartuchos que sirven la memoria con un microcontrolador.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):

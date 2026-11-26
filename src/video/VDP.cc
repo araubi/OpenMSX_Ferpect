@@ -1035,8 +1035,32 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 			// The same test on a Toshiba HX-21 (Texas TMS9928A) shows
 			// the same pattern (see below for the second one).
 			if (!isRead && !cpuVramReqIsRead) {
-				++tmsOwedIncrements;
+				if (version & VM_TOSHIBA_PALETTE) {
+					// FERPECT (26-11-2026), Sony HB-20P (T6950A), measured
+					// with 'ferpect/prueba_vram/VRAMMED4.ASM' (routines in
+					// the internal RAM, their real period measured against
+					// the VDP itself): with writes 23.8 Z80 cycles apart
+					// or more only the pattern above is seen. Closer
+					// together the new write is simply lost (data and
+					// pointer increment, so what follows is shifted):
+					// always at 20.8 cycles or less, about 3 out of 4 at
+					// 21.8 and 1 out of 5 at 22.8. The Z80 and the VDP
+					// have separate crystals in that machine, so their
+					// phase keeps turning; here the limit (128..140 VDP
+					// ticks since the previous write) follows the position
+					// in the frame, to stay deterministic.
+					// Failures per 16 runs of 1024 writes, HB-20P / here:
+					//   22T: a 121, shifted 385 / 153, 423
+					//   23T: a 533, shifted 144 / 517, 91
+					//   24T: a 339 / 383    25T: a 68 / 86    26T: 0 / 0
+					auto gap = VDPClock(tmsLastReqTime).getTicksTill(time);
+					auto limit = 128 + (unsigned(getTicksThisFrame(time)) % 13);
+					if (gap >= limit) ++tmsOwedIncrements;
+				} else {
+					++tmsOwedIncrements;
+				}
 			}
+			tmsLastReqTime = time;
 			cpuVramReqIsRead = isRead;
 			cpuVramReqData = cpuVramData;
 			return;
@@ -1100,6 +1124,7 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	}
 	tmsLastWriteAddr = -1;
 
+	tmsLastReqTime = time;
 	cpuVramReqIsRead = isRead;
 	cpuVramReqData = cpuVramData;
 	pendingCpuAccess = true;
@@ -2494,6 +2519,9 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 
 	if (ar.versionAtLeast(serVersion, 16)) {
 		ar.serialize("tmsOwedIncrements", tmsOwedIncrements);
+	}
+	if (ar.versionAtLeast(serVersion, 17)) {
+		ar.serialize("tmsLastReqTime", tmsLastReqTime);
 	}
 
 	if (ar.versionAtLeast(serVersion, 15)) {

@@ -1473,6 +1473,9 @@ private:
 	  * requests that overwrote a pending write (see
 	  * scheduleTMS99x8VramAccess). */
 	int tmsOwedIncrements = 0;
+	/** FERPECT: time of the last TMS99x8 CPU VRAM request (Toshiba chips,
+	  * see scheduleTMS99x8VramAccess). */
+	EmuTime tmsLastReqTime = EmuTime::zero();
 	/** FERPECT: the last TMS99x8 CPU write that reached VRAM (Texas
 	  * chips only, see scheduleTMS99x8VramAccess). */
 	EmuTime tmsLastWriteTime = EmuTime::zero();
@@ -1533,7 +1536,7 @@ private:
 	MSXCPU& cpu;
 	const uint8_t fixedVDPIOdelayCycles;
 };
-SERIALIZE_CLASS_VERSION(VDP, 16);
+SERIALIZE_CLASS_VERSION(VDP, 17);
 
 } // namespace openmsx
 
