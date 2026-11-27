@@ -163,6 +163,18 @@ public:
 	[[nodiscard]] BooleanSetting& getFullStretchSetting() { return fullStretchSetting; }
 	[[nodiscard]] bool getFullStretch() const { return fullStretchSetting.getBoolean(); }
 
+	/** FERPECT: a 50Hz picture has 288 visible lines on a TV, of which
+	  * openMSX renders the middle 240. With 'pal_aspect' on those 240 lines
+	  * are drawn in 240/288 of the height (the rest shows the border), so
+	  * that the picture has the proportions of a real PAL TV. */
+	[[nodiscard]] BooleanSetting& getPalAspectSetting() { return palAspectSetting; }
+	void setPalFrame(bool pal) { palFrame = pal; }
+	[[nodiscard]] float getVerticalFactor() const {
+		return (palFrame && palAspectSetting.getBoolean() &&
+		        (getDisplayDeform() != DisplayDeform::_3D))
+		     ? (240.0f / 288.0f) : 1.0f;
+	}
+
 	/** Amount of horizontal stretch.
 	  * This number represents the amount of MSX pixels (normal width) that
 	  * will be stretched to the complete width of the host window. */
@@ -243,6 +255,8 @@ private:
 	EnumSetting<DisplayDeform> displayDeformSetting;
 	BooleanSetting vSyncSetting;
 	BooleanSetting fullStretchSetting;
+	BooleanSetting palAspectSetting;
+	bool palFrame = false;
 	FloatSetting horizontalStretchSetting;
 	FloatSetting pointerHideDelaySetting;
 	BooleanSetting interleaveBlackFrameSetting;

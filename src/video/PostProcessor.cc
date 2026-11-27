@@ -32,6 +32,7 @@
 #include "xrange.hh"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -318,10 +319,6 @@ void PostProcessor::paint(OutputSurface& /*output*/)
 	} else {
 		float x1 = (320.0f - horStretch) * (1.0f / (2.0f * 320.0f));
 		float x2 = 1.0f - x1;
-		std::array tex = {
-			vec2(x1, 1), vec2(x1, 0), vec2(x2, 0), vec2(x2, 1)
-		};
-
 		const auto& glContext = *gl::context;
 		glContext.progTex.activate();
 		glUniform4f(glContext.unifTexColor,
@@ -329,16 +326,57 @@ void PostProcessor::paint(OutputSurface& /*output*/)
 		mat4 I;
 		glUniformMatrix4fv(glContext.unifTexMvp, 1, GL_FALSE, I.data());
 
-		glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-		glEnableVertexAttribArray(0);
+		float vf = renderSettings.getVerticalFactor();
+		if (vf >= 1.0f) {
+			std::array tex = {
+				vec2(x1, 1), vec2(x1, 0), vec2(x2, 0), vec2(x2, 1)
+			};
+			glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+			glEnableVertexAttribArray(0);
 
-		glBindBuffer(GL_ARRAY_BUFFER, stretchVBO.get());
-		glBufferData(GL_ARRAY_BUFFER, sizeof(tex), tex.data(), GL_STREAM_DRAW);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-		glEnableVertexAttribArray(1);
+			glBindBuffer(GL_ARRAY_BUFFER, stretchVBO.get());
+			glBufferData(GL_ARRAY_BUFFER, sizeof(tex), tex.data(), GL_STREAM_DRAW);
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+			glEnableVertexAttribArray(1);
 
-		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+			glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+		} else {
+			// FERPECT ('pal_aspect'): a PAL TV shows 288 lines, we
+			// only render 240. Draw those 240 lines in 240/288 of the
+			// height. The missing 24 lines above and below are (in
+			// practice always) border: repeat the first and the last
+			// rendered line there (line per line, so that scanlines
+			// and other effects continue in the same way).
+			static constexpr int EXTRA = (288 - 240) / 2;
+			static constexpr float LINE = 1.0f / 240.0f;
+			std::array<vec2, 2 * 6 * (1 + 2 * EXTRA)> buf; // pos, tex interleaved
+			size_t n = 0;
+			auto quad = [&](float yTop, float yBot, float vTop, float vBot) {
+				auto vtx = [&](float x, float y, float u, float v) {
+					buf[n++] = vec2(x, y);
+					buf[n++] = vec2(u, v);
+				};
+				vtx(-1, yTop, x1, vTop); vtx(-1, yBot, x1, vBot); vtx( 1, yBot, x2, vBot);
+				vtx(-1, yTop, x1, vTop); vtx( 1, yBot, x2, vBot); vtx( 1, yTop, x2, vTop);
+			};
+			quad(vf, -vf, 1.0f, 0.0f);
+			float h = (1.0f - vf) / float(EXTRA);
+			for (int i = 0; i < EXTRA; ++i) {
+				float y = vf + float(i) * h;
+				quad( (y + h),  y, 1.0f, 1.0f - LINE); // above
+				quad(-y, -(y + h), LINE, 0.0f);        // below
+			}
+			glBindBuffer(GL_ARRAY_BUFFER, stretchVBO.get());
+			glBufferData(GL_ARRAY_BUFFER, sizeof(buf), buf.data(), GL_STREAM_DRAW);
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(vec2), nullptr);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(vec2),
+			                      std::bit_cast<const void*>(sizeof(vec2)));
+			glEnableVertexAttribArray(1);
+
+			glDrawArrays(GL_TRIANGLES, 0, GLsizei(n / 2));
+		}
 
 		glDisableVertexAttribArray(1);
 		glDisableVertexAttribArray(0);

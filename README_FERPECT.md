@@ -184,6 +184,17 @@ Visto al comparar el Obliterator (ráfagas de 8 escrituras a 17 T) en el HB-20P 
 
 En ráfagas el HB-20P pierde bytes encadenados cada dos escrituras. El chip necesita que la escritura llegue unos 2,2 ciclos de Z80 antes del hueco; si no, espera al siguiente. Los huecos muy seguidos del final de la línea no lo piden. Con esa regla y las anteriores reajustadas, las cuentas de `VRAMMED5` cuadran mejor a casi todos los ritmos (17, 20 y 24 T casi exactas) y por primera vez en la forma de las ráfagas (`ferpect/prueba_vram/rafagas5.py`). El detalle está en las notas de la versión, punto 21.
 
+### 17. Proporción de imagen PAL (v0.22w)
+
+Un televisor PAL enseña unas 288 líneas de imagen y uno NTSC unas 240. openMSX dibuja siempre 240 líneas y las estira a toda la altura de la ventana, lo que está bien para una máquina a 60 Hz pero deja la imagen de una máquina a 50 Hz más alta de lo que era: en el televisor el área de juego de un MSX europeo se ve más alargada.
+
+El ajuste nuevo `pal_aspect` (activado por defecto) lo corrige: cuando el VDP está a 50 Hz, las 240 líneas dibujadas ocupan 240/288 de la altura y arriba y abajo se añaden 24 líneas que repiten la primera y la última línea dibujada, que son de borde. El área de 256x192 pasa de 1,52:1 a 1,83:1 (con `horizontal_stretch` 280).
+
+- A 60 Hz no cambia nada. Un MSX2 europeo que arranque a 60 Hz se ve como antes hasta que el programa ponga 50 Hz.
+- No se aplica con `display_deform 3d`.
+- La pistola de luz tiene en cuenta la corrección.
+- `set pal_aspect off` deja la imagen como en openMSX.
+
 ## Descarga
 
 En [Releases](../../releases) están los paquetes (desde la v0.22j):

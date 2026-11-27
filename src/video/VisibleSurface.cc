@@ -437,7 +437,9 @@ gl::vec2 VisibleSurface::getMsxPixelSize() const
 	// The image shows 'horizontal_stretch' of the 320 MSX pixels per line,
 	// and always all 240 lines.
 	const auto& renderSettings = display.getRenderSettings();
-	auto msxSize = gl::vec2(renderSettings.getHorizontalStretch(), 240.0f);
+	// (FERPECT: with 'pal_aspect' the height holds 288 lines)
+	auto msxSize = gl::vec2(renderSettings.getHorizontalStretch(),
+	                        240.0f / renderSettings.getVerticalFactor());
 
 	if (renderSettings.getFullStretch()) {
 		return windowSize / msxSize; // image covers the whole window

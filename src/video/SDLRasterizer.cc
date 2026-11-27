@@ -212,6 +212,7 @@ void SDLRasterizer::frameStart(EmuTime time)
 	// NTSC: display at [32..244),
 	// PAL:  display at [59..271).
 	lineRenderTop = getLineRenderTop(vdp.isPalTiming());
+	renderSettings.setPalFrame(vdp.isPalTiming());
 }
 
 void SDLRasterizer::frameEnd()

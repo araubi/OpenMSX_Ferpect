@@ -65,10 +65,16 @@ std::optional<ivec2> LightGunSensor::getAim() const
 	if (!pixelSize) return {};
 	auto& renderSettings = display.getRenderSettings();
 	float hStretch = renderSettings.getHorizontalStretch();
+	// FERPECT ('pal_aspect'): the 240 lines only take part of the height.
+	float vf = renderSettings.getVerticalFactor();
+	*pixelSize = *pixelSize * vec2(1.0f, 1.0f / vf);
 	auto view = gunstick::mouseToView(
 		vec2(*mouse), *pixelSize,
 		vec2(output->getViewOffset()), vec2(output->getViewSize()),
 		hStretch, renderSettings.getFullStretch());
+	if (renderSettings.getDisplayDeform() != RenderSettings::DisplayDeform::_3D) {
+		view.y = (view.y - 120.0f) / vf + 120.0f;
+	}
 	return (renderSettings.getDisplayDeform() == RenderSettings::DisplayDeform::_3D)
 	     ? gunstick::viewToFrame3D(view, hStretch)
 	     : gunstick::viewToFrame(view, hStretch);

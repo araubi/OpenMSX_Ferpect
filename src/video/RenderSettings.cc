@@ -150,6 +150,13 @@ RenderSettings::RenderSettings(CommandController& commandController)
 	, fullStretchSetting(commandController,
 		"full_stretch", "Stretch the image to fill the entire screen in fullscreen mode", false)
 
+	, palAspectSetting(commandController,
+		"pal_aspect",
+		"FERPECT: show 50Hz (PAL) machines with the proportions of a real "
+		"PAL TV. Such a TV shows 288 lines, so the picture is lower and "
+		"looks wider than on a 60Hz machine. When off the 240 lines that "
+		"openMSX renders fill the whole height, as in openMSX.", true)
+
 	// Many android devices are relatively low powered. Therefore use
 	// no stretch (value 320) as default for Android because it gives
 	// better performance
