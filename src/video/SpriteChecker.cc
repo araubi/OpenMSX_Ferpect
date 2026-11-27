@@ -632,7 +632,6 @@ inline void SpriteChecker::checkSprites3(int minLine, int maxLine)
 	bool limitSprites = limitSpritesSetting.getBoolean();
 	int size = vdp.getSpriteSize();
 	auto attributePtr = vram.spriteAttribTable.getReadArea<64 * 8>(0);
-	uint8_t patternIndexMask = size == 16 ? 0xFC : 0xFF;
 	int fifthSpriteNum  = -1;  // no 5th sprite detected yet
 	int fifthSpriteLine = 999; // larger than any possible valid line
 	int maxVisible = 16;
