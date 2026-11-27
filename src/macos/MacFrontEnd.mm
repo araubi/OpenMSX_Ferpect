@@ -265,14 +265,22 @@ void openURL(const std::string& url)
 	}
 }
 
-std::string tr(std::string_view english)
+std::string tr(std::string_view english, const char* language)
 {
 	@autoreleasepool {
+		NSBundle* bundle = [NSBundle mainBundle];
+		if (language) {
+			NSString* path = [bundle pathForResource:[NSString stringWithUTF8String:language]
+			                                  ofType:@"lproj"];
+			NSBundle* langBundle = path ? [NSBundle bundleWithPath:path] : nil;
+			if (!langBundle) return std::string(english);
+			bundle = langBundle;
+		}
 		NSString* key = [[NSString alloc] initWithBytes:english.data()
 		                                         length:english.size()
 		                                       encoding:NSUTF8StringEncoding];
 		if (!key) return std::string(english);
-		NSString* text = [[NSBundle mainBundle] localizedStringForKey:key value:key table:nil];
+		NSString* text = [bundle localizedStringForKey:key value:key table:nil];
 		const char* utf8 = text ? text.UTF8String : nullptr;
 		return utf8 ? std::string(utf8) : std::string(english);
 	}

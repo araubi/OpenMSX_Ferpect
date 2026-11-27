@@ -195,8 +195,9 @@ public:
 	bool nativeMenuAlsoInWindow = false;
 	// FERPECT (macOS): the tool windows are windows of the operating system
 	bool nativeToolWindows = true;
-	// FERPECT (macOS): the native menus in English, whatever the language of the system
-	bool nativeMenuEnglish = false;
+	// FERPECT (macOS): language of the native menus:
+	// 0 = the one of the system, 1 = English, 2 = Spanish
+	int nativeMenuLanguage = 0;
 	bool needReloadFont = false;
 	bool statusBarVisible = false;
 	bool statusBarItemVisibilityFps = true;
@@ -242,7 +243,7 @@ private:
 		PersistentElement{"mainMenuBarFade",     &ImGuiManager::menuFade},
 		PersistentElement{"nativeMenuAlsoInWindow", &ImGuiManager::nativeMenuAlsoInWindow},
 		PersistentElement{"nativeToolWindows",   &ImGuiManager::nativeToolWindows},
-		PersistentElement{"nativeMenuEnglish",   &ImGuiManager::nativeMenuEnglish},
+		PersistentElementMax{"nativeMenuLanguage", &ImGuiManager::nativeMenuLanguage, 3},
 		PersistentElement{"windowPos",           &ImGuiManager::windowPos},
 		PersistentElement{"statusBarVisible",    &ImGuiManager::statusBarVisible},
 		PersistentElement{"statusBarItemvisibility.fps",                 &ImGuiManager::statusBarItemVisibilityFps},

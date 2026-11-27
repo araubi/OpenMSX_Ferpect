@@ -54,6 +54,8 @@
 	<string>Editar los atajos…</string>
 	<key>Eject</key>
 	<string>Expulsar</string>
+	<key>English</key>
+	<string>Inglés</string>
 	<key>FAQ</key>
 	<string>Preguntas frecuentes</string>
 	<key>Fast Forward</key>
@@ -96,8 +98,8 @@
 	<string>Máquina</string>
 	<key>Memory</key>
 	<string>Memoria</string>
-	<key>Menus in English</key>
-	<string>Menús en inglés</string>
+	<key>Menu Language</key>
+	<string>Idioma de los menús</string>
 	<key>Message Log</key>
 	<string>Registro de mensajes</string>
 	<key>Minimize</key>
@@ -168,12 +170,16 @@
 	<string>Slots</string>
 	<key>Sound Chip Settings...</key>
 	<string>Ajustes de los chips de sonido…</string>
+	<key>Spanish</key>
+	<string>Castellano</string>
 	<key>Stack</key>
 	<string>Pila</string>
 	<key>Status Bar</key>
 	<string>Barra de estado</string>
 	<key>Symbol Manager</key>
 	<string>Gestor de símbolos</string>
+	<key>System Default</key>
+	<string>Por defecto (el del sistema)</string>
 	<key>Tape Deck...</key>
 	<string>Reproductor de cintas…</string>
 	<key>Test MSX Hardware...</key>

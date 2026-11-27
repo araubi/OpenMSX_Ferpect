@@ -47,8 +47,9 @@ void showAbout(const std::string& version);
 void openURL(const std::string& url);
 
 /** The text in the language of the user (es.lproj/Localizable.strings in
-  * the application bundle), or the English text itself. */
-[[nodiscard]] std::string tr(std::string_view english);
+  * the application bundle), or the English text itself. With 'language'
+  * (e.g. "es") the text in that language, whatever the one of the user. */
+[[nodiscard]] std::string tr(std::string_view english, const char* language = nullptr);
 
 #else
 
@@ -64,7 +65,7 @@ inline void configureMainWindow(SDL_Window* /*window*/) {}
 	const std::string& /*startDir*/) { return {}; }
 inline void showAbout(const std::string& /*version*/) {}
 inline void openURL(const std::string& /*url*/) {}
-[[nodiscard]] inline std::string tr(std::string_view english) { return std::string(english); }
+[[nodiscard]] inline std::string tr(std::string_view english, const char* /*language*/ = nullptr) { return std::string(english); }
 
 #endif
 

@@ -75,7 +75,6 @@ ES = {
     "Status Bar": "Barra de estado",
     "Tool Windows as Mac Windows": "Ventanas de herramientas como ventanas de Mac",
     "openMSX Menu Bar in the Window": "Barra de menús de openMSX en la ventana",
-    "Menus in English": "Menús en inglés",
     # Settings
     "Settings": "Ajustes",
     "Mute": "Silenciar",
@@ -86,6 +85,10 @@ ES = {
     "Select Font...": "Elegir tipo de letra…",
     "Configure OSD Icons...": "Configurar los iconos en pantalla…",
     "Configure Messages...": "Configurar los mensajes…",
+    "Menu Language": "Idioma de los menús",
+    "System Default": "Por defecto (el del sistema)",
+    "English": "Inglés",
+    "Spanish": "Castellano",
     # Tools
     "Tools": "Herramientas",
     "Console": "Consola",
@@ -141,6 +144,7 @@ found = set(re.findall(
     r'\b(?:item|command|toggle|setting|submenu|open|manual|T|tr|nativeTr)\(\s*"((?:[^"\\]|\\.)*)"', src))
 found |= set(re.findall(r'\bstandard\(\s*S::\w+,\s*"((?:[^"\\]|\\.)*)"', src))
 found |= set(re.findall(r'"([^"]*Size \(x\d\))"', src))
+found |= {"System Default", "English", "Spanish"}
 
 for lang, table in (('es', ES), ('en', {})):
     d = os.path.join(here, lang + '.lproj')

@@ -1006,11 +1006,15 @@ void ImGuiManager::iniWriteAll(ImGuiTextBuffer& buf)
 //
 // The actions run later, from the openMSX main loop (executeDelayed()): the
 // menu calls us from inside the event handling of the operating system.
-// FERPECT: text of the native menus in the language of the user, unless they
-// prefer English (the rest of openMSX is in English).
+// FERPECT: text of the native menus, in the language of the system or in the
+// one chosen in the 'Settings' menu (the rest of openMSX is in English).
 std::string ImGuiManager::nativeTr(std::string_view english) const
 {
-	return nativeMenuEnglish ? std::string(english) : mac::tr(english);
+	switch (nativeMenuLanguage) {
+	case 1:  return std::string(english);
+	case 2:  return mac::tr(english, "es");
+	default: return mac::tr(english);
+	}
 }
 
 std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
@@ -1244,7 +1248,6 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 		m.push_back(toggle("Status Bar", &statusBarVisible));
 		m.push_back(toggle("Tool Windows as Mac Windows", &nativeToolWindows));
 		m.push_back(toggle("openMSX Menu Bar in the Window", &nativeMenuAlsoInWindow, ","));
-		m.push_back(toggle("Menus in English", &nativeMenuEnglish));
 		bar.push_back(submenu("View", std::move(m)));
 	}
 
@@ -1261,6 +1264,22 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 		m.push_back(toggle("Select Font...", &settings->showFont));
 		m.push_back(toggle("Configure OSD Icons...", &osdIcons->showConfigureIcons));
 		m.push_back(toggle("Configure Messages...", &messages->configureWindow.open));
+		m.push_back(separator());
+		{
+			std::vector<Item> sub;
+			static constexpr std::array<std::string_view, 3> names = {
+				"System Default", "English", "Spanish",
+			};
+			for (int i = 0; i < 3; ++i) {
+				auto it = item(names[i], [this, i] {
+					nativeMenuLanguage = i;
+					nativeMenuInstalled = false; // build the whole menu bar again
+				});
+				it.checked = nativeMenuLanguage == i;
+				sub.push_back(std::move(it));
+			}
+			m.push_back(submenu("Menu Language", std::move(sub)));
+		}
 		bar.push_back(submenu("Settings", std::move(m)));
 	}
 
