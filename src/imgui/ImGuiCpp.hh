@@ -64,9 +64,48 @@ namespace im {
 // is a normal window of the operating system, with its title bar and
 // buttons. Then ImGui shouldn't draw its own title bar inside it.
 inline bool nativeWindowTitleBars = false;
+// A window that is drawn over the MSX screen (the display area itself, the
+// OSD icons, the reverse bar, ...) is not a tool window. Call this right
+// before im::Window() for such a window: it stays inside the main window
+// while it's there, and when it has been dragged outside it's a window
+// without decoration of the operating system, as it always was.
+// (Not needed for windows that always have ImGuiWindowFlags_NoTitleBar.)
+inline bool nativeOverlayNext = false;
+inline void nativeOverlayWindow(const char* name)
+{
+	if (!nativeWindowTitleBars) return;
+	nativeOverlayNext = true;
+	const auto* window = ImGui::FindWindowByName(name);
+	const auto* mainViewport = ImGui::GetMainViewport();
+	bool inside = true;
+	if (window) {
+		ImVec2 tl = window->Pos;
+		ImVec2 br = ImVec2(tl.x + window->Size.x, tl.y + window->Size.y);
+		ImVec2 mtl = mainViewport->Pos;
+		ImVec2 mbr = ImVec2(mtl.x + mainViewport->Size.x, mtl.y + mainViewport->Size.y);
+		inside = (tl.x >= mtl.x) && (tl.y >= mtl.y) && (br.x <= mbr.x) && (br.y <= mbr.y);
+	}
+	if (inside) {
+		ImGui::SetNextWindowViewport(mainViewport->ID);
+	} else {
+		ImGuiWindowClass windowClass;
+		windowClass.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoDecoration |
+		                                       ImGuiViewportFlags_NoTaskBarIcon;
+		ImGui::SetNextWindowClass(&windowClass);
+	}
+}
 [[nodiscard]] inline ImGuiWindowFlags nativeWindowFlags(const char* name, ImGuiWindowFlags flags)
 {
 	if (!nativeWindowTitleBars) return flags;
+	if (nativeOverlayNext) {
+		nativeOverlayNext = false;
+		return flags;
+	}
+	if (flags & ImGuiWindowFlags_NoTitleBar) {
+		nativeOverlayWindow(name);
+		nativeOverlayNext = false;
+		return flags;
+	}
 	const auto* window = ImGui::FindWindowByName(name);
 	if (window && window->ViewportOwned && !window->DockIsActive) {
 		flags |= ImGuiWindowFlags_NoTitleBar;

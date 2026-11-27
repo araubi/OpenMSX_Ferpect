@@ -256,6 +256,7 @@ void ImGuiReverseBar::paint(MSXMotherBoard* motherBoard)
 	                               (reverseAllowMove ? 0 : ImGuiWindowFlags_NoMove)
 	                             : 0;
 	adjust.pre();
+	im::nativeOverlayWindow("Reverse bar"); // FERPECT
 	im::Window("Reverse bar", &showReverseBar, flags, [&]{
 		bool isOnMainViewPort = adjust.post();
 		auto b = reverseManager.getBegin();

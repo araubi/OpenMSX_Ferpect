@@ -152,6 +152,7 @@ void ImGuiOsdIcons::paint(MSXMotherBoard* /*motherBoard*/)
 	                        (allowMove ? 0 : ImGuiWindowFlags_NoMove)
 	                      : 0;
 	adjust.pre();
+	im::nativeOverlayWindow("Icons"); // FERPECT
 	im::Window("Icons", &showIcons, flags | ImGuiWindowFlags_HorizontalScrollbar, [&]{
 		bool isOnMainViewPort = adjust.post();
 		gl::vec2 topLeft = ImGui::GetCursorPos();
