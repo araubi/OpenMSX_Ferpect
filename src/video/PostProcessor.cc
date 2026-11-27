@@ -364,8 +364,10 @@ void PostProcessor::paint(OutputSurface& /*output*/)
 			float h = (1.0f - vf) / float(EXTRA);
 			for (int i = 0; i < EXTRA; ++i) {
 				float y = vf + float(i) * h;
-				quad( (y + h),  y, 1.0f, 1.0f - LINE); // above
-				quad(-y, -(y + h), LINE, 0.0f);        // below
+				// Use the 2nd and the 2nd-to-last line: on some
+				// systems the outermost texture rows contain garbage.
+				quad( (y + h),  y, 1.0f - LINE, 1.0f - 2.0f * LINE); // above
+				quad(-y, -(y + h), 2.0f * LINE, LINE);               // below
 			}
 			glBindBuffer(GL_ARRAY_BUFFER, stretchVBO.get());
 			glBufferData(GL_ARRAY_BUFFER, sizeof(buf), buf.data(), GL_STREAM_DRAW);
