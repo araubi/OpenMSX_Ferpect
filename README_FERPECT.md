@@ -201,7 +201,7 @@ El ajuste nuevo `pal_aspect` (activado por defecto) lo corrige: cuando el VDP es
 Parte de una propuesta de FX, autor de BlueMSXFX y de otras aplicaciones de Mac para MSX. Solo afecta a macOS.
 
 - **Menús en la barra de menús del sistema**: Archivo, Edición, Máquina, Visualización, Ajustes, Herramientas, Depurador, Ventana y Ayuda. Cada opción lanza la misma orden de openMSX que el menú de siempre, así que la emulación no cambia. Se mantienen los atajos de openMSX en Mac (⌘P, ⌘D, ⌘T, ⌘L, ⌘U, ⌘Q) y se añaden los habituales de Mac (⌘O, ⌘W, ⌘M, ⌃⌘F, ⌘R).
-- **Idioma**: castellano si macOS está en castellano, inglés en otro caso. Los textos están en `build/package-darwin/localize.py`, que genera `es.lproj/Localizable.strings`.
+- **Idioma**: castellano si macOS está en castellano, inglés en otro caso. En Ajustes, «Idioma de los menús» permite fijar inglés o castellano (el resto de openMSX está en inglés). Los textos están en `build/package-darwin/localize.py`, que genera `es.lproj/Localizable.strings`.
 - **Diálogos de abrir y guardar de macOS** en todos los sitios donde openMSX pedía un archivo.
 - **Ventanas de herramientas como ventanas de Mac**: depurador, visores, consola y demás tienen la barra de título y los botones de macOS y salen en el menú Ventana.
 - Los menús de Mac llevan las opciones más usadas. La barra de menús completa de openMSX se enseña dentro de la ventana con Visualización, «Barra de menús de openMSX en la ventana» (⌘,). «Ventanas de herramientas como ventanas de Mac», en el mismo menú, vuelve a las ventanas de antes.
