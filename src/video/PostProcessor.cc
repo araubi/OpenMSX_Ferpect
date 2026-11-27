@@ -352,9 +352,11 @@ void PostProcessor::paint(OutputSurface& /*output*/)
 			static constexpr float LINE = 1.0f / 240.0f;
 			std::array<vec2, 2 * 6 * (1 + 2 * EXTRA)> buf; // pos, tex interleaved
 			size_t n = 0;
+			// 'pal_overscan': zoom in, the outer part falls off the screen.
+			float zoom = renderSettings.getOverscanZoom();
 			auto quad = [&](float yTop, float yBot, float vTop, float vBot) {
 				auto vtx = [&](float x, float y, float u, float v) {
-					buf[n++] = vec2(x, y);
+					buf[n++] = vec2(x, y) * zoom;
 					buf[n++] = vec2(u, v);
 				};
 				vtx(-1, yTop, x1, vTop); vtx(-1, yBot, x1, vBot); vtx( 1, yBot, x2, vBot);

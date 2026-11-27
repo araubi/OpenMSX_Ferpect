@@ -439,7 +439,8 @@ gl::vec2 VisibleSurface::getMsxPixelSize() const
 	const auto& renderSettings = display.getRenderSettings();
 	// (FERPECT: with 'pal_aspect' the height holds 288 lines)
 	auto msxSize = gl::vec2(renderSettings.getHorizontalStretch(),
-	                        240.0f / renderSettings.getVerticalFactor());
+	                        240.0f / renderSettings.getVerticalFactor())
+	             / renderSettings.getOverscanZoom();
 
 	if (renderSettings.getFullStretch()) {
 		return windowSize / msxSize; // image covers the whole window

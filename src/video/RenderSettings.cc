@@ -157,6 +157,12 @@ RenderSettings::RenderSettings(CommandController& commandController)
 		"looks wider than on a 60Hz machine. When off the 240 lines that "
 		"openMSX renders fill the whole height, as in openMSX.", true)
 
+	, palOverscanSetting(commandController,
+		"pal_overscan",
+		"FERPECT: percentage of the picture that is cut off at each of the "
+		"four sides when 'pal_aspect' is active, like the overscan of a "
+		"real TV. 0 = show the complete picture.", 5, 0, 15)
+
 	// Many android devices are relatively low powered. Therefore use
 	// no stretch (value 320) as default for Android because it gives
 	// better performance

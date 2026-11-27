@@ -174,6 +174,14 @@ public:
 		        (getDisplayDeform() != DisplayDeform::_3D))
 		     ? (240.0f / 288.0f) : 1.0f;
 	}
+	/** FERPECT: a real TV hides the outer part of the picture (overscan).
+	  * 'pal_overscan' is the percentage cut off at each of the four sides,
+	  * only used together with 'pal_aspect'. Returns the zoom factor. */
+	[[nodiscard]] IntegerSetting& getPalOverscanSetting() { return palOverscanSetting; }
+	[[nodiscard]] float getOverscanZoom() const {
+		if (getVerticalFactor() >= 1.0f) return 1.0f;
+		return 1.0f / (1.0f - 0.02f * narrow<float>(palOverscanSetting.getInt()));
+	}
 
 	/** Amount of horizontal stretch.
 	  * This number represents the amount of MSX pixels (normal width) that
@@ -256,6 +264,7 @@ private:
 	BooleanSetting vSyncSetting;
 	BooleanSetting fullStretchSetting;
 	BooleanSetting palAspectSetting;
+	IntegerSetting palOverscanSetting;
 	bool palFrame = false;
 	FloatSetting horizontalStretchSetting;
 	FloatSetting pointerHideDelaySetting;

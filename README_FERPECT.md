@@ -190,6 +190,7 @@ Un televisor PAL enseña unas 288 líneas de imagen y uno NTSC unas 240. openMSX
 
 El ajuste nuevo `pal_aspect` (activado por defecto) lo corrige: cuando el VDP está a 50 Hz, las 240 líneas dibujadas ocupan 240/288 de la altura y arriba y abajo se añaden 24 líneas que repiten la segunda y la penúltima línea dibujada, que son de borde (desde la v0.22x; la primera y la última traían basura en algún equipo). El área de 256x192 pasa de 1,52:1 a 1,83:1 (con `horizontal_stretch` 280).
 
+- Ajuste `pal_overscan` (v0.22x; 5 por defecto, de 0 a 15): porcentaje de la imagen que se recorta por cada uno de los cuatro lados cuando `pal_aspect` está activo, como el sobrebarrido de un televisor. Con 5 quedan a la vista unas 259 líneas de las 288 y el área de juego se ve un 11 % más grande con la misma forma. `set pal_overscan 0` enseña la imagen entera.
 - A 60 Hz no cambia nada. Un MSX2 europeo que arranque a 60 Hz se ve como antes hasta que el programa ponga 50 Hz.
 - No se aplica con `display_deform 3d`.
 - La pistola de luz tiene en cuenta la corrección.
