@@ -1006,11 +1006,18 @@ void ImGuiManager::iniWriteAll(ImGuiTextBuffer& buf)
 //
 // The actions run later, from the openMSX main loop (executeDelayed()): the
 // menu calls us from inside the event handling of the operating system.
+// FERPECT: text of the native menus in the language of the user, unless they
+// prefer English (the rest of openMSX is in English).
+std::string ImGuiManager::nativeTr(std::string_view english) const
+{
+	return nativeMenuEnglish ? std::string(english) : mac::tr(english);
+}
+
 std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 {
 	using Item = NativeMenuItem;
 	using S = NativeMenuItem::Standard;
-	auto T = [](std::string_view english) { return mac::tr(english); };
+	auto T = [this](std::string_view english) { return nativeTr(english); };
 
 	auto* motherBoard = reactor.getMotherBoard();
 	if (motherBoard && !motherBoard->getMachineConfig()) motherBoard = nullptr;
@@ -1111,7 +1118,7 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 	{
 		std::vector<Item> m;
 		m.push_back(item("Open...", [this] {
-			if (auto file = mac::runOpenPanel(mac::tr("Open a cartridge, disk, cassette or other file"), {}, false, {})) {
+			if (auto file = mac::runOpenPanel(nativeTr("Open a cartridge, disk, cassette or other file"), {}, false, {})) {
 				// same as a file dropped on the window
 				droppedFile = *file;
 				handleDropped = true;
@@ -1122,8 +1129,8 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 			auto index = size_t(slot.back() - 'a');
 			auto letter = std::string(1, char('A' + index));
 			std::vector<Item> sub;
-			sub.push_back(item("Insert...", [insertFromPanel, slot] {
-				insertFromPanel(slot, mac::tr("Insert a cartridge"));
+			sub.push_back(item("Insert...", [this, insertFromPanel, slot] {
+				insertFromPanel(slot, nativeTr("Insert a cartridge"));
 			}));
 			sub.push_back(command("Eject", tmpStrCat(slot, " eject")));
 			sub.push_back(separator());
@@ -1137,8 +1144,8 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 			auto index = size_t(drive.back() - 'a');
 			auto letter = std::string(1, char('A' + index));
 			std::vector<Item> sub;
-			sub.push_back(item("Insert...", [insertFromPanel, drive] {
-				insertFromPanel(drive, mac::tr("Insert a disk"));
+			sub.push_back(item("Insert...", [this, insertFromPanel, drive] {
+				insertFromPanel(drive, nativeTr("Insert a disk"));
 			}));
 			sub.push_back(command("Eject", tmpStrCat(drive, " eject")));
 			sub.push_back(separator());
@@ -1150,8 +1157,8 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 		}
 		if (hasMachine && execute(TclObject("cassetteplayer"))) {
 			std::vector<Item> sub;
-			sub.push_back(item("Insert...", [insertFromPanel] {
-				insertFromPanel("cassetteplayer", mac::tr("Insert a cassette"));
+			sub.push_back(item("Insert...", [this, insertFromPanel] {
+				insertFromPanel("cassetteplayer", nativeTr("Insert a cassette"));
 			}));
 			sub.push_back(command("Eject", "cassetteplayer eject"));
 			sub.push_back(command("Rewind", "cassetteplayer rewind"));
@@ -1164,7 +1171,7 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 		m.push_back(disableWithoutMachine(command("Quick Save State", "savestate")));
 		m.push_back(disableWithoutMachine(item("Load State...", [this] {
 			auto dir = FileOperations::getUserOpenMSXDir("savestates");
-			if (auto file = mac::runOpenPanel(mac::tr("Load a saved state"), {}, false, dir)) {
+			if (auto file = mac::runOpenPanel(nativeTr("Load a saved state"), {}, false, dir)) {
 				executeDelayed(makeTclList("loadstate", *file));
 			}
 		})));
@@ -1237,6 +1244,7 @@ std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
 		m.push_back(toggle("Status Bar", &statusBarVisible));
 		m.push_back(toggle("Tool Windows as Mac Windows", &nativeToolWindows));
 		m.push_back(toggle("openMSX Menu Bar in the Window", &nativeMenuAlsoInWindow, ","));
+		m.push_back(toggle("Menus in English", &nativeMenuEnglish));
 		bar.push_back(submenu("View", std::move(m)));
 	}
 

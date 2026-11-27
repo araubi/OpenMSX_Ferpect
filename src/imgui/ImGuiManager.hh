@@ -117,6 +117,7 @@ private:
 	void drawStatusBar(MSXMotherBoard* motherBoard);
 	// FERPECT: native (macOS) menu bar
 	[[nodiscard]] std::vector<NativeMenuItem> buildNativeMenu();
+	[[nodiscard]] std::string nativeTr(std::string_view english) const;
 
 	// ImGuiPartInterface
 	[[nodiscard]] zstring_view iniName() const override { return "manager"; }
@@ -194,6 +195,8 @@ public:
 	bool nativeMenuAlsoInWindow = false;
 	// FERPECT (macOS): the tool windows are windows of the operating system
 	bool nativeToolWindows = true;
+	// FERPECT (macOS): the native menus in English, whatever the language of the system
+	bool nativeMenuEnglish = false;
 	bool needReloadFont = false;
 	bool statusBarVisible = false;
 	bool statusBarItemVisibilityFps = true;
@@ -239,6 +242,7 @@ private:
 		PersistentElement{"mainMenuBarFade",     &ImGuiManager::menuFade},
 		PersistentElement{"nativeMenuAlsoInWindow", &ImGuiManager::nativeMenuAlsoInWindow},
 		PersistentElement{"nativeToolWindows",   &ImGuiManager::nativeToolWindows},
+		PersistentElement{"nativeMenuEnglish",   &ImGuiManager::nativeMenuEnglish},
 		PersistentElement{"windowPos",           &ImGuiManager::windowPos},
 		PersistentElement{"statusBarVisible",    &ImGuiManager::statusBarVisible},
 		PersistentElement{"statusBarItemvisibility.fps",                 &ImGuiManager::statusBarItemVisibilityFps},

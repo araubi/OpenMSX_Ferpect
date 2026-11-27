@@ -96,6 +96,8 @@
 	<string>Máquina</string>
 	<key>Memory</key>
 	<string>Memoria</string>
+	<key>Menus in English</key>
+	<string>Menús en inglés</string>
 	<key>Message Log</key>
 	<string>Registro de mensajes</string>
 	<key>Minimize</key>

@@ -75,6 +75,7 @@ ES = {
     "Status Bar": "Barra de estado",
     "Tool Windows as Mac Windows": "Ventanas de herramientas como ventanas de Mac",
     "openMSX Menu Bar in the Window": "Barra de menús de openMSX en la ventana",
+    "Menus in English": "Menús en inglés",
     # Settings
     "Settings": "Ajustes",
     "Mute": "Silenciar",
@@ -137,7 +138,7 @@ root = os.path.dirname(os.path.dirname(here))
 src = open(os.path.join(root, 'src', 'imgui', 'ImGuiManager.cc'), encoding='utf-8').read()
 src = src[src.index('ImGuiManager::buildNativeMenu()'):]
 found = set(re.findall(
-    r'\b(?:item|command|toggle|setting|submenu|open|manual|T|tr)\(\s*"((?:[^"\\]|\\.)*)"', src))
+    r'\b(?:item|command|toggle|setting|submenu|open|manual|T|tr|nativeTr)\(\s*"((?:[^"\\]|\\.)*)"', src))
 found |= set(re.findall(r'\bstandard\(\s*S::\w+,\s*"((?:[^"\\]|\\.)*)"', src))
 found |= set(re.findall(r'"([^"]*Size \(x\d\))"', src))
 
