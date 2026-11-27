@@ -1232,15 +1232,16 @@ void VDP::scheduleCpuVramAccess(bool isRead, uint8_t write, EmuTime time)
 
 void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 {
-	if (pendingCpuAccess && tmsPhantomOnly && tmsSkipFromOwed) [[unlikely]] {
-		// FERPECT: an owed skip (see below) was waiting for this slot, but
-		// a real request comes first: the skip stays owed and this
-		// request is handled as any other.
+	if (pendingCpuAccess && tmsPhantomOnly) [[unlikely]] {
+		// FERPECT: an 'empty' access (see below) was waiting for its slot,
+		// but a real request comes first: the empty access is dropped (an
+		// owed skip stays owed) and this request is handled as any other.
 		syncCpuVramAccess.removeSyncPoint();
 		pendingCpuAccess = false;
 		tmsPhantomOnly = false;
 		tmsPhantom = false;
 		tmsSkipFromOwed = false;
+		tmsAgain = false;
 	}
 	if (pendingCpuAccess) [[unlikely]] {
 		if (!allowTooFastAccess) {
@@ -1265,18 +1266,6 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 					// byte is lost and what follows is shifted, nothing is
 					// left unwritten. (A waiting 'empty' access, see below,
 					// becomes a normal write.)
-					if (tmsPhantomOnly) {
-						// An 'empty' access left over from a request
-						// seen twice (see below): the new write simply
-						// takes it, nothing is lost.
-						tmsPhantomOnly = false;
-						tmsPhantom = false;
-						tmsAgain = false;
-						tmsLastReqTime = time;
-						cpuVramReqIsRead = isRead;
-						cpuVramReqData = cpuVramData;
-						return;
-					}
 					tmsPhantom = false;
 					// The write that replaces a waiting one very shortly
 					// before its slot is seen again after it: the VDP does
@@ -1289,7 +1278,7 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 					// That is what leaves stray old colours in the walls
 					// of Bestial Warrior. 'A' per 1024 writes, HB-20P /
 					// model: 17T 13/14, 18T 12/11, 19T 7/7, 20T 4/2.
-					constexpr unsigned AGAIN_WINDOW = 12; // 2 Z80 cycles
+					constexpr unsigned AGAIN_WINDOW = 9; // 1.5 Z80 cycles
 					auto left = VDPClock(time).getTicksTill(
 						*syncCpuVramAccess.isPending());
 					tmsAgain = left < AGAIN_WINDOW;
@@ -1380,8 +1369,8 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 		//   20T  84+4  /  87+0   21T  80+9  /  81+0   22T  53+27 / 49+30
 		//   23T  35+57 /  35+52  24T   1+38 /   5+42  25T   0+10 / 1+11
 		//   26T and slower: none.
-		constexpr unsigned LATE_FROM = 12, LATE_TO = 26;
-		constexpr unsigned WAIT_MIN = 99, WAIT_EMPTY = 116, WAIT_MAX = 129;
+		constexpr unsigned LATE_FROM = 16, LATE_TO = 23;
+		constexpr unsigned WAIT_MIN = 102, WAIT_EMPTY = 116, WAIT_MAX = 125;
 		EmuTime now = VDPClock(time) + uint64_t(0);
 		if (tmsLastWriteTime <= now && tmsLastReqTime <= tmsLastWriteTime) {
 			auto u = VDPClock(tmsLastWriteTime).getTicksTill(now);
@@ -1403,7 +1392,11 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 		// advance once more: one address is skipped and nothing is lost
 		// (..,50,EE,51,..). Skipped addresses per 1024 writes, HB-20P /
 		// model: 19T 1/0, 20T 5/7, 21T 14/14, 22T 5/4, 23T 2/6.
-		constexpr unsigned SKIP_WINDOW = 5, SKIP_WAIT = 119;
+		// (v0.22v: window and the constants of the two rules above fitted
+		// again together with the setup time, see Update 6 below; the
+		// counts in these comments are the ones of the version that
+		// introduced each rule.)
+		constexpr unsigned SKIP_WINDOW = 1, SKIP_WAIT = 119;
 		auto u = VDPClock(tmsLastWriteTime).getTicksTill(time);
 		auto w = VDPClock(tmsLastReqTime).getTicksTill(tmsLastWriteTime);
 		if (u < SKIP_WINDOW && w >= SKIP_WAIT) {
@@ -1444,7 +1437,29 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 	// really has its slots (see slotsToshibaGfx12 in VDPAccessSlots.cc);
 	// with that table the request is served by the first slot from 'time'.
 	if (version & VM_TOSHIBA_PALETTE) {
-		EmuTime req = VDPClock(time) + uint64_t(0);
+		//
+		// Update 6 (27-11-2026, v0.22v): seen with Obliterator (it redraws
+		// the colours in bursts of 8 writes 17 cycles apart) and in the
+		// VRAMMED5 dumps of the two Bestial Warrior routines (bursts of 8
+		// writes 20 cycles apart). In bursts the HB-20P loses bytes in
+		// chains, every second write (1st, 1st+3rd, 1st+3rd+5th). That
+		// needs a setup time: a request must arrive about 2.2 Z80 cycles
+		// (13 VDP ticks) before a slot to use it, otherwise it waits for
+		// the next one (a write that replaces a waiting one does use the
+		// slot). The slots that follow another access after less than 80
+		// ticks (the three close ones at the end of the line) don't need
+		// that margin. The other T6950A rules were fitted again on top of
+		// this one. Per 1024 writes inside the display, shifted + unwritten
+		// + skipped, HB-20P / model:
+		//   17T 159+13+0 / 159+13+0   18T 121+12+0 / 117+8+0
+		//   19T 112+7+1  /  92+7+0    20T  86+4+5  /  87+3+5
+		//   21T  78+8+14 /  75+7+5    22T  53+26+5 /  61+27+5
+		//   23T  32+52+2 /  21+47+2   24T   4+35+0 /   3+35+1
+		//   Bestial Warrior loader 75+6+6 / 75+8+4, game 74+8+7 / 72+9+4
+		constexpr uint64_t SETUP = 13, NO_SETUP_AFTER = 80;
+		bool needSetup = !allowTooFastAccess &&
+			VDPClock(tmsLastWriteTime).getTicksTill(time) > NO_SETUP_AFTER;
+		EmuTime req = VDPClock(time) + uint64_t(needSetup ? SETUP : 0);
 		syncCpuVramAccess.setSyncPoint(
 			getAccessSlot(req, VDPAccessSlots::Delta::D0));
 		return;
