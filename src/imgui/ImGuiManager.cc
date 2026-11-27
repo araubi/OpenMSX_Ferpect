@@ -41,13 +41,16 @@
 #include "FileContext.hh"
 #include "FileOperations.hh"
 #include "FilePool.hh"
+#include "GlobalSettings.hh"
 #include "HardwareConfig.hh"
+#include "MacFrontEnd.hh"
 #include "Reactor.hh"
 #include "RealDrive.hh"
 #include "RomDatabase.hh"
 #include "RomInfo.hh"
 #include "SettingsConfig.hh"
 #include "VDP.hh"
+#include "Version.hh"
 
 #include "format.hh"
 #include "stl.hh"
@@ -536,7 +539,31 @@ void ImGuiManager::paintImGui(bool msxDisplayAreaFocused)
 			part->showMenu(motherBoard);
 		}
 	};
-	if (mainMenuBarUndocked) {
+	// FERPECT (macOS): the menus are in the menu bar of the system, and the
+	// tool windows are normal windows of the system.
+	bool nativeMenu = false;
+	if constexpr (mac::NATIVE_UI) {
+		if (!nativeMenuInstalled) {
+			nativeMenuInstalled = true;
+			mac::installMenuBar([this] { return buildNativeMenu(); });
+		}
+		nativeMenu = !nativeMenuAlsoInWindow;
+		ImGuiIO& io = ImGui::GetIO();
+		io.ConfigViewportsNoAutoMerge  = nativeToolWindows;
+		io.ConfigViewportsNoDecoration = !nativeToolWindows;
+		im::nativeWindowTitleBars = nativeToolWindows;
+	}
+	if (nativeMenu && !mainMenuBarUndocked) {
+		// no menu bar inside the window
+		bool active = !msxDisplayAreaFocused &&
+		              (ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ||
+		               ImGui::IsWindowFocused(ImGuiHoveredFlags_AnyWindow));
+		if (active != guiActive) {
+			guiActive = active;
+			auto& eventDistributor = reactor.getEventDistributor();
+			eventDistributor.distributeEvent(ImGuiActiveEvent(active));
+		}
+	} else if (mainMenuBarUndocked) {
 		im::Window("openMSX main menu", &mainMenuBarUndocked, ImGuiWindowFlags_MenuBar, [&]{
 			im::MenuBar([&]{
 				if (ImGui::ArrowButton("re-dock-button", ImGuiDir_Down)) {
@@ -968,6 +995,352 @@ void ImGuiManager::iniWriteAll(ImGuiTextBuffer& buf)
 			buf.append("\n");
 		}
 	}
+}
+
+
+// FERPECT: the menus for the menu bar of the operating system (macOS).
+//
+// This mirrors the most used items of the showMenu() methods of the parts.
+// Things that are not here are still in the openMSX menu bar, that can be
+// shown inside the window from the 'View' menu.
+//
+// The actions run later, from the openMSX main loop (executeDelayed()): the
+// menu calls us from inside the event handling of the operating system.
+std::vector<NativeMenuItem> ImGuiManager::buildNativeMenu()
+{
+	using Item = NativeMenuItem;
+	using S = NativeMenuItem::Standard;
+	auto T = [](std::string_view english) { return mac::tr(english); };
+
+	auto* motherBoard = reactor.getMotherBoard();
+	if (motherBoard && !motherBoard->getMachineConfig()) motherBoard = nullptr;
+	bool hasMachine = motherBoard != nullptr;
+
+	auto separator = [] {
+		Item it;
+		it.standard = S::SEPARATOR;
+		return it;
+	};
+	auto standard = [&](S kind, std::string_view title, std::string key = {}, unsigned mods = Item::CMD) {
+		Item it;
+		it.standard = kind;
+		it.title = T(title);
+		it.key = std::move(key);
+		it.mods = mods;
+		return it;
+	};
+	auto item = [&](std::string_view title, std::function<void()> action,
+	                std::string key = {}, unsigned mods = Item::CMD) {
+		Item it;
+		it.title = T(title);
+		it.key = std::move(key);
+		it.mods = mods;
+		it.action = [this, action = std::move(action)] { executeDelayed(action); };
+		return it;
+	};
+	auto command = [&](std::string_view title, std::string_view cmd,
+	                   std::string key = {}, unsigned mods = Item::CMD) {
+		return item(title, [this, c = std::string(cmd)] {
+			executeDelayed(TclObject(c));
+		}, std::move(key), mods);
+	};
+	// a window (or other thing) that is shown when 'flag' is true
+	auto toggle = [&](std::string_view title, bool* flag,
+	                  std::string key = {}, unsigned mods = Item::CMD) {
+		auto it = item(title, [flag] { if (flag) *flag = !*flag; }, std::move(key), mods);
+		it.checked = flag && *flag;
+		it.enabled = flag != nullptr;
+		return it;
+	};
+	auto settingIsOn = [&](std::string_view name) {
+		auto result = execute(makeTclList("set", name));
+		if (!result) return false;
+		return result->getOptionalBool().value_or(false);
+	};
+	// a boolean openMSX setting
+	auto setting = [&](std::string_view title, std::string_view name,
+	                   std::string key = {}, unsigned mods = Item::CMD) {
+		auto it = command(title, tmpStrCat("toggle ", name), std::move(key), mods);
+		it.checked = settingIsOn(name);
+		return it;
+	};
+	auto submenu = [&](std::string_view title, std::vector<Item> children, bool enabled = true) {
+		Item it;
+		it.title = T(title);
+		it.children = std::move(children);
+		it.enabled = enabled;
+		return it;
+	};
+	auto disableWithoutMachine = [&](Item it) {
+		if (!hasMachine) it.enabled = false;
+		return it;
+	};
+	auto insertFromPanel = [this](std::string media, std::string title) {
+		executeDelayed([this, media, title] {
+			auto file = mac::runOpenPanel(title, {}, false, {});
+			if (!file) return;
+			auto cmd = makeTclList(media, "insert", *file);
+			executeDelayed(cmd, [this, cmd](const TclObject&) {
+				this->media->addRecent(cmd);
+			});
+		});
+	};
+
+	std::vector<Item> bar;
+
+	// --- application menu
+	{
+		std::vector<Item> m;
+		m.push_back(item("About openMSX", [] {
+			mac::showAbout(std::string(std::string_view(Version::full())));
+		}));
+		m.push_back(separator());
+		m.push_back(standard(S::SERVICES, "Services"));
+		m.push_back(separator());
+		m.push_back(standard(S::HIDE, "Hide openMSX", "h"));
+		m.push_back(standard(S::HIDE_OTHERS, "Hide Others", "h", Item::CMD | Item::ALT));
+		m.push_back(standard(S::SHOW_ALL, "Show All"));
+		m.push_back(separator());
+		m.push_back(standard(S::QUIT, "Quit openMSX", "q"));
+		auto top = submenu("openMSX", std::move(m));
+		top.role = Item::Role::APP;
+		bar.push_back(std::move(top));
+	}
+
+	// --- File
+	{
+		std::vector<Item> m;
+		m.push_back(item("Open...", [this] {
+			if (auto file = mac::runOpenPanel(mac::tr("Open a cartridge, disk, cassette or other file"), {}, false, {})) {
+				// same as a file dropped on the window
+				droppedFile = *file;
+				handleDropped = true;
+			}
+		}, "o"));
+		m.push_back(separator());
+		for (const auto& slot : getSlots(motherBoard)) {
+			auto index = size_t(slot.back() - 'a');
+			auto letter = std::string(1, char('A' + index));
+			std::vector<Item> sub;
+			sub.push_back(item("Insert...", [insertFromPanel, slot] {
+				insertFromPanel(slot, mac::tr("Insert a cartridge"));
+			}));
+			sub.push_back(command("Eject", tmpStrCat(slot, " eject")));
+			sub.push_back(separator());
+			sub.push_back(toggle("More Options...", &media->cartridgeMediaInfo[index].show));
+			Item it;
+			it.title = strCat(T("Cartridge Slot"), ' ', letter);
+			it.children = std::move(sub);
+			m.push_back(std::move(it));
+		}
+		for (const auto& drive : getDrives(motherBoard)) {
+			auto index = size_t(drive.back() - 'a');
+			auto letter = std::string(1, char('A' + index));
+			std::vector<Item> sub;
+			sub.push_back(item("Insert...", [insertFromPanel, drive] {
+				insertFromPanel(drive, mac::tr("Insert a disk"));
+			}));
+			sub.push_back(command("Eject", tmpStrCat(drive, " eject")));
+			sub.push_back(separator());
+			sub.push_back(toggle("More Options...", &media->diskMediaInfo[index].show));
+			Item it;
+			it.title = strCat(T("Disk Drive"), ' ', letter);
+			it.children = std::move(sub);
+			m.push_back(std::move(it));
+		}
+		if (hasMachine && execute(TclObject("cassetteplayer"))) {
+			std::vector<Item> sub;
+			sub.push_back(item("Insert...", [insertFromPanel] {
+				insertFromPanel("cassetteplayer", mac::tr("Insert a cassette"));
+			}));
+			sub.push_back(command("Eject", "cassetteplayer eject"));
+			sub.push_back(command("Rewind", "cassetteplayer rewind"));
+			sub.push_back(separator());
+			sub.push_back(toggle("Tape Deck...", &media->cassetteMediaInfo.show));
+			m.push_back(submenu("Cassette", std::move(sub)));
+		}
+		m.push_back(separator());
+		m.push_back(disableWithoutMachine(command("Quick Load State", "loadstate")));
+		m.push_back(disableWithoutMachine(command("Quick Save State", "savestate")));
+		m.push_back(disableWithoutMachine(item("Load State...", [this] {
+			auto dir = FileOperations::getUserOpenMSXDir("savestates");
+			if (auto file = mac::runOpenPanel(mac::tr("Load a saved state"), {}, false, dir)) {
+				executeDelayed(makeTclList("loadstate", *file));
+			}
+		})));
+		m.push_back(separator());
+		m.push_back(disableWithoutMachine(command("Save Screenshot", "screenshot -guess-name", "d")));
+		m.push_back(toggle("Screenshot Options...", &tools->showScreenshot));
+		m.push_back(toggle("Record Audio/Video...", &tools->showRecord));
+		m.push_back(separator());
+		m.push_back(standard(S::CLOSE, "Close", "w"));
+		bar.push_back(submenu("File", std::move(m)));
+	}
+
+	// --- Edit
+	{
+		std::vector<Item> m;
+		m.push_back(disableWithoutMachine(command("Copy Screen Text", "copy_screen_to_clipboard",
+		                                          "c", Item::CMD | Item::SHIFT)));
+		m.push_back(disableWithoutMachine(command("Paste into the MSX", "type_clipboard",
+		                                          "v", Item::CMD | Item::SHIFT)));
+		bar.push_back(submenu("Edit", std::move(m)));
+	}
+
+	// --- Machine
+	{
+		std::vector<Item> m;
+		m.push_back(setting("Pause", "pause", "p"));
+		m.push_back(disableWithoutMachine(command("Reset", "reset", "r")));
+		m.push_back(setting("Power", "power"));
+		m.push_back(separator());
+		{
+			auto it = command("Full Speed", "toggle throttle");
+			it.checked = !settingIsOn("throttle");
+			m.push_back(std::move(it));
+		}
+		m.push_back(setting("Fast Forward", "fastforward", "t"));
+		m.push_back(setting("Full Speed When Loading", "fullspeedwhenloading"));
+		m.push_back(separator());
+		m.push_back(toggle("Select MSX Machine...", &machine->showSelectMachine));
+		m.push_back(toggle("Test MSX Hardware...", &machine->showTestHardware));
+		m.push_back(separator());
+		m.push_back(disableWithoutMachine(toggle("Reverse Bar", &reverseBar->showReverseBar)));
+		bar.push_back(submenu("Machine", std::move(m)));
+	}
+
+	// --- View
+	{
+		std::vector<Item> m;
+		m.push_back(setting("Full Screen", "fullscreen", "f", Item::CMD | Item::CTRL));
+		m.push_back(separator());
+		int scale = 0;
+		if (auto r = execute(TclObject("set scale_factor"))) {
+			scale = r->getOptionalInt().value_or(0);
+		}
+		for (int i = 1; i <= 4; ++i) {
+			static constexpr std::array<std::string_view, 4> names = {
+				"Normal Size (x1)", "Double Size (x2)", "Triple Size (x3)", "Quadruple Size (x4)",
+			};
+			auto it = command(names[i - 1], tmpStrCat("set scale_factor ", i),
+			                  std::string(1, char('0' + i)), Item::CMD | Item::ALT);
+			it.checked = scale == i;
+			m.push_back(std::move(it));
+		}
+		m.push_back(separator());
+		m.push_back(setting("PAL TV Proportions", "pal_aspect"));
+		m.push_back(setting("Full Stretch", "full_stretch"));
+		m.push_back(setting("Deinterlace", "deinterlace"));
+		m.push_back(setting("Deflicker", "deflicker"));
+		m.push_back(setting("VSync", "vsync"));
+		m.push_back(separator());
+		m.push_back(toggle("Status Bar", &statusBarVisible));
+		m.push_back(toggle("Tool Windows as Mac Windows", &nativeToolWindows));
+		m.push_back(toggle("openMSX Menu Bar in the Window", &nativeMenuAlsoInWindow, ","));
+		bar.push_back(submenu("View", std::move(m)));
+	}
+
+	// --- Settings
+	{
+		std::vector<Item> m;
+		m.push_back(setting("Mute", "mute", "u"));
+		m.push_back(toggle("Sound Chip Settings...", &soundChip->showSoundChipSettings));
+		m.push_back(separator());
+		m.push_back(setting("Grab Input", "grabinput"));
+		m.push_back(toggle("Configure MSX Joysticks...", &settings->showConfigureJoystick));
+		m.push_back(toggle("Edit Shortcuts...", &settings->showShortcut));
+		m.push_back(separator());
+		m.push_back(toggle("Select Font...", &settings->showFont));
+		m.push_back(toggle("Configure OSD Icons...", &osdIcons->showConfigureIcons));
+		m.push_back(toggle("Configure Messages...", &messages->configureWindow.open));
+		bar.push_back(submenu("Settings", std::move(m)));
+	}
+
+	// --- Tools
+	{
+		std::vector<Item> m;
+		m.push_back(toggle("Console", &console->show, "l"));
+		m.push_back(toggle("Virtual Keyboard", &keyboard->show));
+		m.push_back(toggle("Message Log", &messages->logWindow.open));
+		m.push_back(separator());
+		m.push_back(toggle("Disk Manipulator", &diskManipulator->show));
+		m.push_back(separator());
+		m.push_back(toggle("Trainer Selector", &trainer->show));
+		m.push_back(toggle("Cheat Finder", &cheatFinder->show));
+		m.push_back(separator());
+		m.push_back(toggle("SCC Viewer", &sccViewer->show));
+		m.push_back(toggle("MSX-Music Viewer", &msxMusicViewer->show));
+		m.push_back(toggle("Audio Channel Viewer", &waveViewer->show));
+		m.push_back(toggle("Plotter Viewer", &plotterViewer->show));
+		m.push_back(separator());
+		m.push_back(toggle("Slot Map", &slotMap->show));
+		m.push_back(toggle("I/O Ports", &ioPorts->show));
+		bar.push_back(submenu("Tools", std::move(m)));
+	}
+
+	// --- Debugger
+	{
+		std::vector<Item> m;
+		auto open = [&](std::string_view title, std::string what) {
+			return item(title, [this, what] { debugger->nativeMenuOpen(what); });
+		};
+		m.push_back(toggle("Tool Bar", debugger->nativeMenuFlag("control")));
+		m.push_back(open("Disassembly", "disassembly"));
+		m.push_back(toggle("CPU Registers", debugger->nativeMenuFlag("registers")));
+		m.push_back(toggle("CPU Flags", debugger->nativeMenuFlag("flags")));
+		m.push_back(toggle("Slots", debugger->nativeMenuFlag("slots")));
+		m.push_back(toggle("Stack", debugger->nativeMenuFlag("stack")));
+		m.push_back(open("Memory", "memory"));
+		m.push_back(separator());
+		m.push_back(toggle("Breakpoints", &breakPoints->show));
+		m.push_back(toggle("Symbol Manager", &symbols->show));
+		m.push_back(toggle("Watch Expression", &watchExpr->show));
+		m.push_back(toggle("Probe/Trace Viewer", &traceViewer->show));
+		m.push_back(separator());
+		m.push_back(open("VDP Bitmap Viewer", "bitmap"));
+		m.push_back(open("VDP Tile Viewer", "tile"));
+		m.push_back(open("VDP Sprite Viewer", "sprite"));
+		m.push_back(toggle("Raster Beam Viewer", &rasterViewer->show));
+		m.push_back(toggle("VDP Register Viewer", &vdpRegs->show));
+		m.push_back(toggle("Palette Editor", &palette->window.open));
+		if (!hasMachine) {
+			for (auto& it : m) it.enabled = false;
+		}
+		bar.push_back(submenu("Debugger", std::move(m)));
+	}
+
+	// --- Window
+	{
+		std::vector<Item> m;
+		m.push_back(standard(S::MINIMIZE, "Minimize", "m"));
+		m.push_back(standard(S::ZOOM, "Zoom"));
+		m.push_back(separator());
+		m.push_back(standard(S::BRING_ALL_TO_FRONT, "Bring All to Front"));
+		auto top = submenu("Window", std::move(m));
+		top.role = Item::Role::WINDOW;
+		bar.push_back(std::move(top));
+	}
+
+	// --- Help
+	{
+		std::vector<Item> m;
+		auto manual = [&](std::string_view title, std::string_view page) {
+			return item(title, [page = std::string(page)] {
+				SDL_OpenURL(strCat("file://", FileOperations::getSystemDocDir(),
+				                   "/manual/", page).c_str());
+			});
+		};
+		m.push_back(manual("FAQ", "faq.html"));
+		m.push_back(manual("Setup Guide", "setup.html"));
+		m.push_back(manual("User Manual", "user.html"));
+		m.push_back(separator());
+		m.push_back(toggle("About openMSX (credits)", &help->showAboutOpenMSX));
+		auto top = submenu("Help", std::move(m));
+		top.role = Item::Role::HELP;
+		bar.push_back(std::move(top));
+	}
+
+	return bar;
 }
 
 } // namespace openmsx

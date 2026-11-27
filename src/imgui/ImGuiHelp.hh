@@ -30,6 +30,7 @@ private:
 	void paintAbout();
 
 private:
+	friend class ImGuiManager; // FERPECT: native (macOS) menu
 	bool showImGuiUserGuide = false;
 	bool showAboutOpenMSX = false;
 	bool showAboutImGui = false;

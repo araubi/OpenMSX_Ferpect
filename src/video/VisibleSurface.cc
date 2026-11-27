@@ -20,6 +20,7 @@
 #include "Icon.hh"
 #include "ImGuiLayer.hh"
 #include "InitException.hh"
+#include "MacFrontEnd.hh"
 #include "InputEventGenerator.hh"
 #include "MemBuffer.hh"
 #include "OSDGUILayer.hh"
@@ -252,6 +253,7 @@ void VisibleSurface::createSurface(gl::ivec2 size, SDL_WindowFlags flags)
 	// SDL3 may apply the window state (e.g. fullscreen) asynchronously,
 	// but we need the final size right away (see setViewPort()).
 	SDL_SyncWindow(window.get());
+	mac::configureMainWindow(window.get()); // FERPECT
 
 	updateWindowTitle();
 

@@ -36,6 +36,7 @@ private:
 	[[nodiscard]] std::string getRecordFilename() const;
 
 private:
+	friend class ImGuiManager; // FERPECT: native (macOS) menu
 	bool showScreenshot = false;
 	bool showRecord = false;
 

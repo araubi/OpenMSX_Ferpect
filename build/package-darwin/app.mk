@@ -6,6 +6,8 @@ APP_EXE_DIR:=$(APP_DIR)/Contents/MacOS
 APP_PLIST:=$(APP_DIR)/Contents/Info.plist
 APP_RES:=$(APP_DIR)/Contents/Resources
 APP_ICON:=$(APP_RES)/openmsx-logo.icns
+# FERPECT: texts of the native menus (see localize.py)
+APP_LPROJ:=$(APP_RES)/en.lproj/Localizable.strings $(APP_RES)/es.lproj/Localizable.strings
 
 # Override install locations.
 DESTDIR:=$(BINDIST_DIR)
@@ -28,7 +30,7 @@ DMG_VOLNAME:=openMSX $(shell PYTHONPATH=build $(PYTHON) -c \
   ) installer
 
 # TODO: What is needed for an app folder?
-app: install $(DESTDIR)/$(APP_PLIST) $(DESTDIR)/$(APP_ICON)
+app: install $(DESTDIR)/$(APP_PLIST) $(DESTDIR)/$(APP_ICON) $(addprefix $(DESTDIR)/,$(APP_LPROJ))
 
 bindist: app codesign $(DESTDIR)/$(BINDIST_LICENSE)
 	@echo "Creating disk image:"
@@ -84,7 +86,7 @@ $(DESTDIR)/$(APP_PLIST): $(DESTDIR)/$(APP_DIR)/Contents/%: $(APP_SUPPORT_DIR)/% 
 		-e 's/%MIN_OS_VERSION%/$(OSX_VER)/' < $< > $@
 	@echo "APPLoMSX" > $(@D)/PkgInfo
 
-$(DESTDIR)/$(APP_ICON): $(DESTDIR)/$(APP_RES)/%: $(APP_SUPPORT_DIR)/% bindistclean
+$(DESTDIR)/$(APP_ICON) $(addprefix $(DESTDIR)/,$(APP_LPROJ)): $(DESTDIR)/$(APP_RES)/%: $(APP_SUPPORT_DIR)/% bindistclean
 	@echo "  Copying resources..."
 	@mkdir -p $(@D)
 	@cp $< $@

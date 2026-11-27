@@ -62,6 +62,9 @@ public:
 	DebuggableBitmapViewer& openBitmapViewer(std::string_view debuggableName);
 	// The first open hex editor for this debuggable, or else a newly opened one.
 	DebuggableEditor& openHexEditor(std::string_view debuggableName);
+	// FERPECT: for the native (macOS) menu, same as the items of showMenu()
+	void nativeMenuOpen(std::string_view what);
+	[[nodiscard]] bool* nativeMenuFlag(std::string_view what);
 	void checkShortcuts(MSXCPUInterface& cpuInterface, MSXMotherBoard& motherBoard,
 	                    ImGuiDisassembly* disassembly);
 

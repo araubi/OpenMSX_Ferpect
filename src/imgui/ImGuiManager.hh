@@ -12,6 +12,7 @@
 #include "IntegerSetting.hh"
 #include "Reactor.hh"
 #include "RomTypes.hh"
+#include "NativeMenu.hh"
 #include "TclObject.hh"
 
 #include "Observer.hh"
@@ -114,6 +115,8 @@ private:
 	void loadFont();
 	void reloadFont();
 	void drawStatusBar(MSXMotherBoard* motherBoard);
+	// FERPECT: native (macOS) menu bar
+	[[nodiscard]] std::vector<NativeMenuItem> buildNativeMenu();
 
 	// ImGuiPartInterface
 	[[nodiscard]] zstring_view iniName() const override { return "manager"; }
@@ -187,6 +190,10 @@ public:
 	std::unique_ptr<ImGuiMessages> messages;
 
 	bool menuFade = true;
+	// FERPECT (macOS): also show the openMSX menu bar inside the window
+	bool nativeMenuAlsoInWindow = false;
+	// FERPECT (macOS): the tool windows are windows of the operating system
+	bool nativeToolWindows = true;
 	bool needReloadFont = false;
 	bool statusBarVisible = false;
 	bool statusBarItemVisibilityFps = true;
@@ -215,6 +222,7 @@ private:
 	bool handleDropped = false;
 	bool openInsertedInfo = false;
 	bool guiActive = false;
+	bool nativeMenuInstalled = false;
 	// The ImGui window (ID) that last had the keyboard focus, other than
 	// the main menu bar. When the menu bar gives up the focus, the focus
 	// goes back to this window, see paintImGui().
@@ -229,6 +237,8 @@ private:
 	static constexpr auto persistentElements = std::tuple{
 		PersistentElement{"mainMenuBarUndocked", &ImGuiManager::mainMenuBarUndocked},
 		PersistentElement{"mainMenuBarFade",     &ImGuiManager::menuFade},
+		PersistentElement{"nativeMenuAlsoInWindow", &ImGuiManager::nativeMenuAlsoInWindow},
+		PersistentElement{"nativeToolWindows",   &ImGuiManager::nativeToolWindows},
 		PersistentElement{"windowPos",           &ImGuiManager::windowPos},
 		PersistentElement{"statusBarVisible",    &ImGuiManager::statusBarVisible},
 		PersistentElement{"statusBarItemvisibility.fps",                 &ImGuiManager::statusBarItemVisibilityFps},

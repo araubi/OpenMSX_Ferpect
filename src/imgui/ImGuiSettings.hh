@@ -54,6 +54,7 @@ private:
 	std::span<const FontInfo> getAvailableFonts();
 
 private:
+	friend class ImGuiManager; // FERPECT: native (macOS) menu
 	bool showConfigureJoystick = false;
 	bool showFont = false;
 	bool showShortcut = false;

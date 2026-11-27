@@ -320,6 +320,26 @@ DebuggableEditor& ImGuiDebugger::openHexEditor(std::string_view debuggableName)
 	return **it;
 }
 
+void ImGuiDebugger::nativeMenuOpen(std::string_view what)
+{
+	if        (what == "disassembly") { openOrCreate(manager, disassemblyViewers);
+	} else if (what == "bitmap")      { openOrCreate(manager, bitmapViewers);
+	} else if (what == "tile")        { openOrCreate(manager, tileViewers);
+	} else if (what == "sprite")      { openOrCreate(manager, spriteViewers);
+	} else if (what == "memory")      { openHexEditor("memory");
+	}
+}
+
+bool* ImGuiDebugger::nativeMenuFlag(std::string_view what)
+{
+	if (what == "control")   return &showControl;
+	if (what == "registers") return &showRegisters;
+	if (what == "flags")     return &showFlags;
+	if (what == "slots")     return &showSlots;
+	if (what == "stack")     return &showStack;
+	return nullptr;
+}
+
 void ImGuiDebugger::showMenu(MSXMotherBoard* motherBoard)
 {
 	auto createHexEditor = [&](const std::string& name) {

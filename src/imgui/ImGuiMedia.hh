@@ -133,6 +133,7 @@ public:
 	void showMediaWindow(std::string_view mediaName);
 
 private:
+	friend class ImGuiManager; // FERPECT: native (macOS) menu
 	bool selectRecent(ItemGroup& group, function_ref<std::string(const std::string&)> displayFunc, float width) const;
 	bool selectImage(ItemGroup& group, const std::string& title,
 	                 function_ref<std::string()> createFilter, zstring_view current,

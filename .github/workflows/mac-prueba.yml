@@ -1,0 +1,80 @@
+name: FERPECT macOS test build
+
+# Test builds of the macOS package for work in progress, on the branches
+# below. Nothing is released: the .dmg is only kept as artifact of the run.
+
+on:
+  push:
+    branches:
+      - mac-nativo
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Quick check of the macOS sources
+    runs-on: macos-15-intel
+    steps:
+    - uses: actions/checkout@v5
+    - name: Property lists
+      run: |
+        plutil -lint build/package-darwin/Info.plist
+        plutil -lint build/package-darwin/en.lproj/Localizable.strings
+        plutil -lint build/package-darwin/es.lproj/Localizable.strings
+    - name: Syntax of MacFrontEnd.mm
+      run: |
+        # SDL3 isn't built yet at this point: declare the few things used
+        mkdir -p /tmp/stub/SDL3
+        cat > /tmp/stub/SDL3/SDL.h <<'EOF'
+        typedef unsigned int SDL_PropertiesID;
+        struct SDL_Window;
+        extern "C" SDL_PropertiesID SDL_GetWindowProperties(SDL_Window* window);
+        extern "C" void* SDL_GetPointerProperty(SDL_PropertiesID props, const char* name, void* default_value);
+        #define SDL_PROP_WINDOW_COCOA_WINDOW_POINTER "SDL.window.cocoa.window"
+        EOF
+        clang++ -std=c++2b -fobjc-arc -fsyntax-only -Wall -Wextra \
+          -I/tmp/stub -Isrc/macos -Isrc/imgui src/macos/MacFrontEnd.mm
+
+  build:
+    name: macOS ${{ matrix.cpu }}
+    needs: check
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpu: x86_64
+            plat: mac-x86_64
+          - cpu: aarch64
+            plat: mac-arm64
+    steps:
+    - name: Get current code from Git repo
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - name: Select Xcode version
+      run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+    - name: Build
+      uses: ./.github/actions/build
+      with:
+        os: darwin
+        cpu: ${{ matrix.cpu }}
+        flavour: opt
+    - name: Package
+      id: pkg
+      shell: bash
+      run: |
+        NAME=openMSX-FERPECT-prueba-mac-nativo-${{ matrix.plat }}
+        D=derived/${{ matrix.cpu }}-darwin-opt-3rd
+        SRC=`ls $D/*.dmg | head -1`
+        cp "$SRC" "$D/$NAME.dmg"
+        echo "out=$D/$NAME.dmg" >> $GITHUB_OUTPUT
+        echo "name=$NAME" >> $GITHUB_OUTPUT
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.pkg.outputs.name }}
+        path: ${{ steps.pkg.outputs.out }}
+        if-no-files-found: error

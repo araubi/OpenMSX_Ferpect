@@ -60,10 +60,24 @@
 
 namespace im {
 
+// FERPECT (macOS): when true, an ImGui window that is outside the main window
+// is a normal window of the operating system, with its title bar and
+// buttons. Then ImGui shouldn't draw its own title bar inside it.
+inline bool nativeWindowTitleBars = false;
+[[nodiscard]] inline ImGuiWindowFlags nativeWindowFlags(const char* name, ImGuiWindowFlags flags)
+{
+	if (!nativeWindowTitleBars) return flags;
+	const auto* window = ImGui::FindWindowByName(name);
+	if (window && window->ViewportOwned && !window->DockIsActive) {
+		flags |= ImGuiWindowFlags_NoTitleBar;
+	}
+	return flags;
+}
+
 // im::Window(): wrapper around ImGui::Begin() / ImGui::End()
 inline bool Window(const char* name, bool* p_open, ImGuiWindowFlags flags, std::invocable<> auto next)
 {
-	bool open = ImGui::Begin(name, p_open, flags);
+	bool open = ImGui::Begin(name, p_open, nativeWindowFlags(name, flags));
 	if (open) {
 		next();
 	}
@@ -87,7 +101,7 @@ struct WindowStatus {
 };
 inline bool Window(const char* name, WindowStatus& status, ImGuiWindowFlags flags, std::invocable<> auto next)
 {
-	bool open = ImGui::Begin(name, &status.open, flags);
+	bool open = ImGui::Begin(name, &status.open, nativeWindowFlags(name, flags));
 	if (open) {
 		if (status.do_raise) {
 			status.do_raise = false;

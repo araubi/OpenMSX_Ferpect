@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>About openMSX</key>
+	<string>Acerca de openMSX</string>
+	<key>About openMSX (credits)</key>
+	<string>Acerca de openMSX (créditos)</string>
+	<key>Audio Channel Viewer</key>
+	<string>Visor de canales de audio</string>
+	<key>Breakpoints</key>
+	<string>Puntos de ruptura</string>
+	<key>Bring All to Front</key>
+	<string>Traer todo al frente</string>
+	<key>CPU Flags</key>
+	<string>Indicadores de la CPU</string>
+	<key>CPU Registers</key>
+	<string>Registros de la CPU</string>
+	<key>Cartridge Slot</key>
+	<string>Ranura de cartucho</string>
+	<key>Cassette</key>
+	<string>Cinta</string>
+	<key>Cheat Finder</key>
+	<string>Buscador de trucos</string>
+	<key>Close</key>
+	<string>Cerrar</string>
+	<key>Configure MSX Joysticks...</key>
+	<string>Configurar los joysticks MSX…</string>
+	<key>Configure Messages...</key>
+	<string>Configurar los mensajes…</string>
+	<key>Configure OSD Icons...</key>
+	<string>Configurar los iconos en pantalla…</string>
+	<key>Console</key>
+	<string>Consola</string>
+	<key>Copy Screen Text</key>
+	<string>Copiar el texto de la pantalla</string>
+	<key>Debugger</key>
+	<string>Depurador</string>
+	<key>Deflicker</key>
+	<string>Quitar parpadeo</string>
+	<key>Deinterlace</key>
+	<string>Desentrelazar</string>
+	<key>Disassembly</key>
+	<string>Desensamblado</string>
+	<key>Disk Drive</key>
+	<string>Unidad de disco</string>
+	<key>Disk Manipulator</key>
+	<string>Manipulador de discos</string>
+	<key>Double Size (x2)</key>
+	<string>Tamaño doble (x2)</string>
+	<key>Edit</key>
+	<string>Edición</string>
+	<key>Edit Shortcuts...</key>
+	<string>Editar los atajos…</string>
+	<key>Eject</key>
+	<string>Expulsar</string>
+	<key>FAQ</key>
+	<string>Preguntas frecuentes</string>
+	<key>Fast Forward</key>
+	<string>Avance rápido</string>
+	<key>File</key>
+	<string>Archivo</string>
+	<key>Full Screen</key>
+	<string>Pantalla completa</string>
+	<key>Full Speed</key>
+	<string>Velocidad máxima</string>
+	<key>Full Speed When Loading</key>
+	<string>Velocidad máxima al cargar</string>
+	<key>Full Stretch</key>
+	<string>Estirar a toda la pantalla</string>
+	<key>Grab Input</key>
+	<string>Capturar el ratón y el teclado</string>
+	<key>Help</key>
+	<string>Ayuda</string>
+	<key>Hide Others</key>
+	<string>Ocultar otros</string>
+	<key>Hide openMSX</key>
+	<string>Ocultar openMSX</string>
+	<key>I/O Ports</key>
+	<string>Puertos de E/S</string>
+	<key>Insert a cartridge</key>
+	<string>Insertar un cartucho</string>
+	<key>Insert a cassette</key>
+	<string>Insertar una cinta</string>
+	<key>Insert a disk</key>
+	<string>Insertar un disco</string>
+	<key>Insert...</key>
+	<string>Insertar…</string>
+	<key>Load State...</key>
+	<string>Cargar estado…</string>
+	<key>Load a saved state</key>
+	<string>Cargar un estado guardado</string>
+	<key>MSX-Music Viewer</key>
+	<string>Visor de MSX-Music</string>
+	<key>Machine</key>
+	<string>Máquina</string>
+	<key>Memory</key>
+	<string>Memoria</string>
+	<key>Message Log</key>
+	<string>Registro de mensajes</string>
+	<key>Minimize</key>
+	<string>Minimizar</string>
+	<key>More Options...</key>
+	<string>Más opciones…</string>
+	<key>Mute</key>
+	<string>Silenciar</string>
+	<key>Normal Size (x1)</key>
+	<string>Tamaño normal (x1)</string>
+	<key>Open a cartridge, disk, cassette or other file</key>
+	<string>Abrir un cartucho, disco, cinta u otro archivo</string>
+	<key>Open...</key>
+	<string>Abrir…</string>
+	<key>PAL TV Proportions</key>
+	<string>Proporción de televisor PAL</string>
+	<key>Palette Editor</key>
+	<string>Editor de paleta</string>
+	<key>Paste into the MSX</key>
+	<string>Pegar en el MSX</string>
+	<key>Pause</key>
+	<string>Pausa</string>
+	<key>Plotter Viewer</key>
+	<string>Visor del plotter</string>
+	<key>Power</key>
+	<string>Encendido</string>
+	<key>Probe/Trace Viewer</key>
+	<string>Visor de sondas y trazas</string>
+	<key>Quadruple Size (x4)</key>
+	<string>Tamaño cuádruple (x4)</string>
+	<key>Quick Load State</key>
+	<string>Cargar estado rápido</string>
+	<key>Quick Save State</key>
+	<string>Guardar estado rápido</string>
+	<key>Quit openMSX</key>
+	<string>Salir de openMSX</string>
+	<key>Raster Beam Viewer</key>
+	<string>Visor del haz de barrido</string>
+	<key>Record Audio/Video...</key>
+	<string>Grabar audio y vídeo…</string>
+	<key>Reset</key>
+	<string>Reiniciar</string>
+	<key>Reverse Bar</key>
+	<string>Barra de rebobinado</string>
+	<key>Rewind</key>
+	<string>Rebobinar</string>
+	<key>SCC Viewer</key>
+	<string>Visor de SCC</string>
+	<key>Save Screenshot</key>
+	<string>Guardar captura de pantalla</string>
+	<key>Screenshot Options...</key>
+	<string>Opciones de captura de pantalla…</string>
+	<key>Select Font...</key>
+	<string>Elegir tipo de letra…</string>
+	<key>Select MSX Machine...</key>
+	<string>Elegir máquina MSX…</string>
+	<key>Services</key>
+	<string>Servicios</string>
+	<key>Settings</key>
+	<string>Ajustes</string>
+	<key>Setup Guide</key>
+	<string>Guía de instalación</string>
+	<key>Show All</key>
+	<string>Mostrar todo</string>
+	<key>Slot Map</key>
+	<string>Mapa de slots</string>
+	<key>Slots</key>
+	<string>Slots</string>
+	<key>Sound Chip Settings...</key>
+	<string>Ajustes de los chips de sonido…</string>
+	<key>Stack</key>
+	<string>Pila</string>
+	<key>Status Bar</key>
+	<string>Barra de estado</string>
+	<key>Symbol Manager</key>
+	<string>Gestor de símbolos</string>
+	<key>Tape Deck...</key>
+	<string>Reproductor de cintas…</string>
+	<key>Test MSX Hardware...</key>
+	<string>Probar el hardware MSX…</string>
+	<key>Tool Bar</key>
+	<string>Barra de herramientas</string>
+	<key>Tool Windows as Mac Windows</key>
+	<string>Ventanas de herramientas como ventanas de Mac</string>
+	<key>Tools</key>
+	<string>Herramientas</string>
+	<key>Trainer Selector</key>
+	<string>Selector de trucos</string>
+	<key>Triple Size (x3)</key>
+	<string>Tamaño triple (x3)</string>
+	<key>User Manual</key>
+	<string>Manual de uso</string>
+	<key>VDP Bitmap Viewer</key>
+	<string>Visor de mapa de bits del VDP</string>
+	<key>VDP Register Viewer</key>
+	<string>Visor de registros del VDP</string>
+	<key>VDP Sprite Viewer</key>
+	<string>Visor de sprites del VDP</string>
+	<key>VDP Tile Viewer</key>
+	<string>Visor de patrones del VDP</string>
+	<key>VSync</key>
+	<string>Sincronía vertical</string>
+	<key>View</key>
+	<string>Visualización</string>
+	<key>Virtual Keyboard</key>
+	<string>Teclado virtual</string>
+	<key>Watch Expression</key>
+	<string>Expresiones vigiladas</string>
+	<key>Window</key>
+	<string>Ventana</string>
+	<key>Zoom</key>
+	<string>Zoom</string>
+	<key>openMSX</key>
+	<string>openMSX</string>
+	<key>openMSX Menu Bar in the Window</key>
+	<string>Barra de menús de openMSX en la ventana</string>
+</dict>
+</plist>
