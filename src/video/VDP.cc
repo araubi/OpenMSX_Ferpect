@@ -1451,10 +1451,10 @@ void VDP::scheduleTMS99x8VramAccess(bool isRead, EmuTime time)
 		// that margin. The other T6950A rules were fitted again on top of
 		// this one. Per 1024 writes inside the display, shifted + unwritten
 		// + skipped, HB-20P / model:
-		//   17T 159+13+0 / 159+13+0   18T 121+12+0 / 117+8+0
-		//   19T 112+7+1  /  92+7+0    20T  86+4+5  /  87+3+5
-		//   21T  78+8+14 /  75+7+5    22T  53+26+5 /  61+27+5
-		//   23T  32+52+2 /  21+47+2   24T   4+35+0 /   3+35+1
+		//   17T 159+13+0 / 155+12+0   18T 121+12+0 / 117+9+0
+		//   19T 112+7+1  /  92+7+0    20T  86+4+5  /  85+4+5
+		//   21T  78+8+14 /  76+8+4    22T  53+26+5 /  60+26+6
+		//   23T  32+52+2 /  22+39+2   24T   4+35+0 /   3+35+1
 		//   Bestial Warrior loader 75+6+6 / 75+8+4, game 74+8+7 / 72+9+4
 		constexpr uint64_t SETUP = 13, NO_SETUP_AFTER = 80;
 		bool needSetup = !allowTooFastAccess &&

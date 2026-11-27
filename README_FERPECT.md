@@ -182,7 +182,7 @@ Visto al comparar el Obliterator (ráfagas de 8 escrituras a 17 T) en el HB-20P 
 
 ### 16. MSX1 Toshiba (T6950A): margen antes del hueco (v0.22v)
 
-En ráfagas el HB-20P pierde bytes encadenados cada dos escrituras. El chip necesita que la escritura llegue unos 2,2 ciclos de Z80 antes del hueco; si no, espera al siguiente. Los huecos muy seguidos del final de la línea no lo piden. Con esa regla y las anteriores reajustadas, las cuentas de `VRAMMED5` cuadran mejor a casi todos los ritmos (17 T y 24 T exactas) y por primera vez en la forma de las ráfagas (`ferpect/prueba_vram/rafagas5.py`). El detalle está en las notas de la versión, punto 21.
+En ráfagas el HB-20P pierde bytes encadenados cada dos escrituras. El chip necesita que la escritura llegue unos 2,2 ciclos de Z80 antes del hueco; si no, espera al siguiente. Los huecos muy seguidos del final de la línea no lo piden. Con esa regla y las anteriores reajustadas, las cuentas de `VRAMMED5` cuadran mejor a casi todos los ritmos (17, 20 y 24 T casi exactas) y por primera vez en la forma de las ráfagas (`ferpect/prueba_vram/rafagas5.py`). El detalle está en las notas de la versión, punto 21.
 
 ## Descarga
 
